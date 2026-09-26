@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<meta name="theme-color" content="#2B2420" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Tesorería" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<title>Libro de Tesorería</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FAF6F0; }
+  body { font-family: 'Public Sans', system-ui, sans-serif; }
+  .rd-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .rd-display { font-family: 'Fraunces', serif; }
+  .rd-btn { cursor: pointer; border: none; font-family: inherit; background: none; }
+  .rd-btn:focus-visible, .rd-select:focus-visible, .rd-input:focus-visible { outline: 2px solid #8B5E3C; outline-offset: 2px; }
+  .rd-scroll::-webkit-scrollbar { height: 6px; }
+  .rd-scroll::-webkit-scrollbar-thumb { background: #E7DFD2; border-radius: 3px; }
+  @media (prefers-reduced-motion: reduce) { .rd-anim { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+// ============ FIREBASE ============
+// 1. Ve a https://console.firebase.google.com
+// 2. Tu proyecto -> Configuracion -> tus apps -> firebaseConfig
+// 3. Pega esos valores aqui abajo
+const firebaseConfig = {
+  apiKey: "AIzaSyB6MQeohS7-7etyML8zNq-ItaHZaM1VXXg",
+  authDomain: "iglesia-tesoreria-91759.firebaseapp.com",
+  projectId: "iglesia-tesoreria-91759",
+  storageBucket: "iglesia-tesoreria-91759.firebasestorage.app",
+  messagingSenderId: "515653779326",
+  appId: "1:515653779326:web:c99d54bd43021caa113d2f",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ============ ICONOS (SVG simples, sin libreria externa) ============
+const ICON_PATHS = {
+  plus: "M12 5v14M5 12h14",
+  x: "M18 6 6 18M6 6l12 12",
+  trash: "M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6h12ZM10 11v6M14 11v6",
+  wallet: "M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3M3 7v11a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4M3 7l3-4h9M16 14h3",
+  trendUp: "M3 17l6-6 4 4 8-8M15 7h6v6",
+  trendDown: "M3 7l6 6 4-4 8 8M15 17h6v-6",
+  handCoins: "M12 3v2M12 19v2M5 12H3M21 12h-2M6.6 6.6 5.2 5.2M18.8 18.8l-1.4-1.4M6.6 17.4 5.2 18.8M18.8 5.2l-1.4 1.4M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z",
+  receipt: "M6 3h12a1 1 0 0 1 1 1v17l-3-2-2 2-2-2-2 2-2-2-3 2V4a1 1 0 0 1 1-1ZM8 8h8M8 12h8M8 16h5",
+  logout: "M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M16 17l5-5-5-5M21 12H9",
+  book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z",
+  bars: "M4 20V10M12 20V4M20 20v-6",
+  sliders: "M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0M8 3v6M15 9v6M18 15v6",
+  users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  tags: "m20.6 12.6-7.9 7.9a2 2 0 0 1-2.83 0l-7.06-7.06a2 2 0 0 1 0-2.83l7.9-7.9A2 2 0 0 1 12 2h6a2 2 0 0 1 2 2v6a2 2 0 0 1-.6 1.4ZM7.5 7.5h.01",
+  landmark: "M3 22h18M6 18v-8M10 18v-8M14 18v-8M18 18v-8M2 10l10-6 10 6M2 10h20",
+  calendar: "M8 2v4M16 2v4M3 9h18M4 5h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",
+  lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z",
+};
+
+function Icon({ name, size = 18, color = "currentColor", style, filled }) {
+  const d = ICON_PATHS[name];
+  if (!d) return null;
+  if (name === "handCoins") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+        <path d={d} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <path d={d} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ============ HELPERS Y CONSTANTES COMPARTIDAS ============
+const TIPOS = {
+  diezmo: { label: "Diezmo", color: "#8B5E3C", sign: 1 },
+  ofrenda: { label: "Ofrenda", color: "#C9A227", sign: 1 },
+  salida: { label: "Salida", color: "#B5533C", sign: -1 },
+};
+
+const PORCENTAJE_REMESA = 0.10;
+
+function currency(n) {
+  const v = Number(n) || 0;
+  return v.toLocaleString("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 });
+}
+
+function monthKey(dateStr) {
+  return dateStr ? dateStr.slice(0, 7) : "";
+}
+
+function monthLabel(key) {
+  if (!key) return "";
+  const [y, m] = key.split("-");
+  const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  return `${meses[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function dateLabel(dateStr) {
+  if (!dateStr) return "";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("es-CR", {
+    weekday: "long", day: "2-digit", month: "long", year: "numeric",
+  });
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+const theme = {
+  "--ink": "#2B2420", "--paper": "#FAF6F0", "--paper-line": "#E7DFD2",
+  "--wood": "#8B5E3C", "--gold": "#C9A227", "--clay": "#B5533C",
+  "--sage": "#4B7355", "--muted": "#8A7F6E",
+};
+
+const inputStyle = {
+  width: "100%", boxSizing: "border-box", padding: "11px 12px", borderRadius: 9,
+  border: "1px solid var(--paper-line)", background: "#fff", fontSize: 16,
+  color: "var(--ink)", fontFamily: "inherit",
+};
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function SummaryCard({ iconName, label, value, color }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, padding: "14px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color, fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>
+        <Icon name={iconName} size={16} color={color} />
+        {label}
+      </div>
+      <div className="rd-mono" style={{ fontSize: 20, fontWeight: 600, color: "var(--ink)" }}>{currency(value)}</div>
+    </div>
+  );
+}
+
+// ============ LOGIN ============
+function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await auth.signInWithEmailAndPassword(email.trim(), password);
+    } catch (err) {
+      if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(err.code)) {
+        setError("Correo o clave incorrectos.");
+      } else {
+        setError("No se pudo iniciar sesión. Intenta de nuevo.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF6F0", fontFamily: "'Public Sans', system-ui, sans-serif", padding: 20, boxSizing: "border-box" }}>
+      <form onSubmit={handleSubmit} style={{ background: "#fff", border: "1px solid #E7DFD2", borderRadius: 16, padding: "32px 28px", width: "100%", maxWidth: 360, boxSizing: "border-box" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <div style={{ background: "#2B2420", borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="lock" size={18} color="#FAF6F0" />
+          </div>
+        </div>
+        <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: "#2B2420" }}>Libro de Tesorería</h1>
+        <p style={{ textAlign: "center", fontSize: 14.5, color: "#8A7F6E", margin: "0 0 24px" }}>Acceso solo para personal autorizado</p>
+
+        <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#8A7F6E", marginBottom: 6 }}>Correo</label>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} placeholder="correo@ejemplo.com" />
+
+        <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#8A7F6E", margin: "14px 0 6px" }}>Clave</label>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} placeholder="••••••••" />
+
+        {error && <div style={{ marginTop: 12, fontSize: 14.5, color: "#B5533C", background: "#FBEAE5", padding: "8px 12px", borderRadius: 8 }}>{error}</div>}
+
+        <button type="submit" disabled={loading} style={{ width: "100%", marginTop: 20, padding: "12px 0", borderRadius: 10, background: "#2B2420", color: "#FAF6F0", border: "none", fontSize: 16, fontWeight: 600, cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1 }}>
+          {loading ? "Ingresando…" : "Ingresar"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ============ AJUSTES (miembros y categorias) ============
+function Settings() {
+  const [tab, setTab] = useState("members");
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 600 }}>Ajustes</h1>
+      <div style={{ fontSize: 14.5, color: "var(--muted)", marginBottom: 20 }}>Administra los miembros/familias y las categorías de salida.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <TabButton active={tab === "members"} onClick={() => setTab("members")} iconName="users" label="Miembros / familias" />
+        <TabButton active={tab === "categories"} onClick={() => setTab("categories")} iconName="tags" label="Categorías de salida" />
+      </div>
+      {tab === "members" ? (
+        <SimpleList collectionName="members" placeholder="Ej. Familia Rodríguez" emptyText="Todavía no has agregado miembros ni familias." />
+      ) : (
+        <SimpleList collectionName="categories" placeholder="Ej. Sonido" emptyText="Todavía no has agregado categorías de salida." />
+      )}
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, iconName, label }) {
+  return (
+    <button className="rd-btn" onClick={onClick} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: active ? "var(--ink)" : "#fff", color: active ? "var(--paper)" : "var(--muted)", border: `1px solid ${active ? "var(--ink)" : "var(--paper-line)"}` }}>
+      <Icon name={iconName} size={14} />
+      {label}
+    </button>
+  );
+}
+
+function SimpleList({ collectionName, placeholder, emptyText }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [nombre, setNombre] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const unsub = db.collection(collectionName).orderBy("nombre").onSnapshot(
+      (snap) => { setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); },
+      () => { setError("No se pudo cargar la lista."); setLoading(false); }
+    );
+    return () => unsub();
+  }, [collectionName]);
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    const trimmed = nombre.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      await db.collection(collectionName).add({ nombre: trimmed });
+      setNombre("");
+      setError(null);
+    } catch (err) {
+      setError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await db.collection(collectionName).doc(id).delete();
+    } catch (err) {
+      setError("No se pudo eliminar.");
+    }
+  }
+
+  return (
+    <div>
+      <form onSubmit={handleAdd} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input className="rd-input" type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={placeholder} style={{ ...inputStyle, flex: 1 }} />
+        <button className="rd-btn" type="submit" disabled={saving} style={{ width: 44, borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", opacity: saving ? 0.6 : 1 }} aria-label="Agregar">
+          <Icon name="plus" size={18} />
+        </button>
+      </form>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "16px 0" }}>Cargando…</div>
+      ) : items.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>{emptyText}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((item) => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "10px 14px" }}>
+              <span style={{ fontSize: 15.5 }}>{item.nombre}</span>
+              <button className="rd-btn" onClick={() => handleDelete(item.id)} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ INFORME ============
+function Report() {
+  const [view, setView] = useState("dia");
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <TabButton active={view === "dia"} onClick={() => setView("dia")} iconName="calendar" label="Informe diario" />
+        <TabButton active={view === "miembro"} onClick={() => setView("miembro")} iconName="users" label="Por diezmador (mes)" />
+      </div>
+      {view === "dia" ? <DailyReport /> : <MemberMonthReport />}
+    </div>
+  );
+}
+
+function DailyReport() {
+  const [fecha, setFecha] = useState(todayStr());
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    const unsub = db.collection("entries").where("fecha", "==", fecha).onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); setError(null); },
+      () => { setError("No se pudo cargar el informe."); setLoading(false); }
+    );
+    return () => unsub();
+  }, [fecha]);
+
+  const totals = useMemo(() => {
+    let diezmos = 0, ofrendas = 0, salidas = 0;
+    for (const e of entries) {
+      if (e.tipo === "diezmo") diezmos += e.monto;
+      else if (e.tipo === "ofrenda") ofrendas += e.monto;
+      else if (e.tipo === "salida") salidas += e.monto;
+    }
+    const remesa = diezmos * PORCENTAJE_REMESA;
+    const ingresos = diezmos + ofrendas;
+    return { diezmos, ofrendas, salidas, remesa, ingresos, disponibleLocal: ingresos - remesa - salidas };
+  }, [entries]);
+
+  const salidasPorCategoria = useMemo(() => {
+    const map = {};
+    for (const e of entries) {
+      if (e.tipo === "salida") {
+        const key = e.categoria || "Sin categoría";
+        map[key] = (map[key] || 0) + e.monto;
+      }
+    }
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [entries]);
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>{dateLabel(fecha)}</h1>
+      <input className="rd-input" type="date" value={fecha} max={todayStr()} onChange={(e) => setFecha(e.target.value)} style={{ ...inputStyle, marginBottom: 20 }} />
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "24px 0" }}>Cargando…</div>
+      ) : entries.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 14, padding: "32px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Sin movimientos registrados en esta fecha.</div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <SummaryCard iconName="handCoins" label="Diezmos" value={totals.diezmos} color="var(--wood)" />
+            <SummaryCard iconName="trendUp" label="Ofrendas" value={totals.ofrendas} color="var(--gold)" />
+            <SummaryCard iconName="trendDown" label="Salidas" value={totals.salidas} color="var(--clay)" />
+            <SummaryCard iconName="trendUp" label="Total entradas" value={totals.ingresos} color="var(--sage)" />
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, padding: "16px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <Icon name="landmark" size={16} color="var(--wood)" />
+              <span style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>Remesa a iglesia nacional (10% de diezmos)</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, color: "var(--muted)", marginBottom: 6 }}><span>Diezmos del día</span><span className="rd-mono">{currency(totals.diezmos)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, color: "var(--muted)", marginBottom: 6 }}><span>× 10%</span><span className="rd-mono">{currency(totals.remesa)}</span></div>
+            <div style={{ height: 1, background: "var(--paper-line)", margin: "8px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, color: "var(--wood)" }}><span>A remesar</span><span className="rd-mono">{currency(totals.remesa)}</span></div>
+          </div>
+
+          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
+            <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Queda disponible para la iglesia local</div>
+            <div style={{ fontSize: 13, color: "rgba(250,246,240,0.5)", marginBottom: 4 }}>(diezmos + ofrendas) − remesa 10% − salidas del día</div>
+            <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 23, fontWeight: 600, marginTop: 6 }}>{currency(totals.disponibleLocal)}</div>
+          </div>
+
+          {salidasPorCategoria.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div className="rd-display" style={{ fontSize: 16, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Salidas por categoría</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {salidasPorCategoria.map(([cat, monto]) => (
+                  <div key={cat} style={{ display: "flex", justifyContent: "space-between", background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "10px 14px", fontSize: 15 }}>
+                    <span>{cat}</span><span className="rd-mono" style={{ color: "var(--clay)", fontWeight: 600 }}>{currency(monto)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="rd-display" style={{ fontSize: 16, fontWeight: 600, color: "var(--muted)", margin: "16px 0 8px" }}>Movimientos del día ({entries.length})</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {entries.map((e) => {
+                const meta = TIPOS[e.tipo];
+                return (
+                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid var(--paper-line)", borderLeft: `4px solid ${meta.color}`, borderRadius: 10, padding: "10px 14px" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: meta.color }}>{meta.label}</span>
+                      <div style={{ fontSize: 14.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.descripcion || e.persona || "Sin descripción"}</div>
+                    </div>
+                    <div className="rd-mono" style={{ fontSize: 15, fontWeight: 600, color: meta.sign > 0 ? "var(--sage)" : "var(--clay)" }}>
+                      {meta.sign > 0 ? "+" : "−"}{currency(e.monto).replace("−", "").replace("-", "")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MemberMonthReport() {
+  const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const unsub = db.collection("entries").where("tipo", "==", "diezmo").onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); setError(null); },
+      () => { setError("No se pudo cargar el informe."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  const months = useMemo(() => {
+    const set = new Set(entries.map((e) => monthKey(e.fecha)));
+    set.add(monthKey(todayStr()));
+    return Array.from(set).sort().reverse();
+  }, [entries]);
+
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === selectedMonth), [entries, selectedMonth]);
+
+  const porDiezmador = useMemo(() => {
+    const map = {};
+    for (const e of monthEntries) {
+      const nombre = e.persona && e.persona.trim() ? e.persona.trim() : "Sin especificar";
+      if (!map[nombre]) map[nombre] = { total: 0, cantidad: 0 };
+      map[nombre].total += e.monto;
+      map[nombre].cantidad += 1;
+    }
+    return Object.entries(map).map(([nombre, datos]) => ({ nombre, ...datos })).sort((a, b) => b.total - a.total);
+  }, [monthEntries]);
+
+  const totalMes = useMemo(() => monthEntries.reduce((s, e) => s + e.monto, 0), [monthEntries]);
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>Diezmos por persona — {monthLabel(selectedMonth)}</h1>
+
+      <div className="rd-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20 }}>
+        {months.map((m) => (
+          <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
+            {monthLabel(m)}
+          </button>
+        ))}
+      </div>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "24px 0" }}>Cargando…</div>
+      ) : porDiezmador.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 14, padding: "32px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Sin diezmos registrados este mes.</div>
+      ) : (
+        <>
+          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 16 }}>
+            <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Total de diezmos del mes ({porDiezmador.reduce((s, p) => s + p.cantidad, 0)} movimientos)</div>
+            <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 22, fontWeight: 600 }}>{currency(totalMes)}</div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {porDiezmador.map((p) => (
+              <div key={p.nombre} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15.5, color: p.nombre === "Sin especificar" ? "var(--muted)" : "var(--ink)", fontStyle: p.nombre === "Sin especificar" ? "italic" : "normal" }}>{p.nombre}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{p.cantidad} {p.cantidad === 1 ? "movimiento" : "movimientos"}</div>
+                </div>
+                <div className="rd-mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--wood)", whiteSpace: "nowrap" }}>{currency(p.total)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============ REGISTRO (pantalla principal) ============
+function Ledger({ user }) {
+  const [entries, setEntries] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
+
+  const [form, setForm] = useState({ fecha: todayStr(), tipo: "diezmo", monto: "", descripcion: "", persona: "", personaOtro: "", categoria: "" });
+
+  useEffect(() => {
+    const unsub = db.collection("entries").orderBy("fecha", "desc").onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); setError(null); },
+      () => { setError("No se pudieron cargar los registros. Revisa tu conexión."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("members").orderBy("nombre").onSnapshot((snap) => setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("categories").orderBy("nombre").onSnapshot((snap) => setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  function resetForm() {
+    setForm({ fecha: todayStr(), tipo: "diezmo", monto: "", descripcion: "", persona: "", personaOtro: "", categoria: "" });
+  }
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!form.fecha || !form.monto || Number(form.monto) <= 0) return;
+    const personaFinal = form.persona === "__otro__" ? form.personaOtro.trim() : form.persona;
+    try {
+      await db.collection("entries").add({
+        fecha: form.fecha, tipo: form.tipo, monto: Number(form.monto),
+        descripcion: form.descripcion.trim(), persona: personaFinal,
+        categoria: form.tipo === "salida" ? form.categoria : "",
+        creadoPor: user.email,
+        creado: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      resetForm();
+      setShowForm(false);
+    } catch (err) {
+      setError("No se pudo guardar el movimiento. Intenta de nuevo.");
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await db.collection("entries").doc(id).delete();
+    } catch (err) {
+      setError("No se pudo eliminar el movimiento.");
+    }
+  }
+
+  const months = useMemo(() => {
+    const set = new Set(entries.map((e) => monthKey(e.fecha)));
+    set.add(monthKey(todayStr()));
+    return Array.from(set).sort().reverse();
+  }, [entries]);
+
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === selectedMonth).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [entries, selectedMonth]);
+
+  const totals = useMemo(() => {
+    let diezmos = 0, ofrendas = 0, salidas = 0;
+    for (const e of monthEntries) {
+      if (e.tipo === "diezmo") diezmos += e.monto;
+      else if (e.tipo === "ofrenda") ofrendas += e.monto;
+      else if (e.tipo === "salida") salidas += e.monto;
+    }
+    return { diezmos, ofrendas, salidas, balance: diezmos + ofrendas - salidas };
+  }, [monthEntries]);
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 26, fontWeight: 600, color: "var(--ink)" }}>Diezmos, ofrendas y salidas</h1>
+
+      <div className="rd-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16 }}>
+        {months.map((m) => (
+          <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
+            {monthLabel(m)}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+        <SummaryCard iconName="handCoins" label="Diezmos" value={totals.diezmos} color="var(--wood)" />
+        <SummaryCard iconName="trendUp" label="Ofrendas" value={totals.ofrendas} color="var(--gold)" />
+        <SummaryCard iconName="trendDown" label="Salidas" value={totals.salidas} color="var(--clay)" />
+        <div style={{ background: "var(--ink)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Balance</div>
+          <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 22, fontWeight: 600 }}>{currency(totals.balance)}</div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="rd-display" style={{ fontSize: 16.5, fontWeight: 600, color: "var(--muted)" }}>{monthEntries.length} {monthEntries.length === 1 ? "movimiento" : "movimientos"}</div>
+      </div>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 14, padding: "24px 0", textAlign: "center" }}>Cargando registros…</div>
+      ) : monthEntries.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 14, padding: "32px 16px", textAlign: "center", color: "var(--muted)" }}>
+          <Icon name="receipt" size={22} color="var(--muted)" style={{ marginBottom: 8, opacity: 0.6 }} />
+          <div style={{ fontSize: 14 }}>Sin movimientos este mes.</div>
+          <div style={{ fontSize: 13 }}>Toca el botón + para registrar el primero.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {monthEntries.map((e) => {
+            const meta = TIPOS[e.tipo];
+            return (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid var(--paper-line)", borderLeft: `4px solid ${meta.color}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: meta.color }}>{meta.label}</span>
+                    {e.categoria && <span style={{ fontSize: 12.5, color: "var(--muted)" }}>· {e.categoria}</span>}
+                  </div>
+                  <div style={{ fontSize: 15.5, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.descripcion || e.persona || "Sin descripción"}</div>
+                  <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>
+                    {new Date(e.fecha + "T00:00:00").toLocaleDateString("es-CR", { day: "2-digit", month: "short" })}
+                    {e.persona && e.descripcion ? ` · ${e.persona}` : ""}
+                    {e.creadoPor ? ` · ${e.creadoPor.split("@")[0]}` : ""}
+                  </div>
+                </div>
+                <div className="rd-mono" style={{ fontSize: 16.5, fontWeight: 600, color: meta.sign > 0 ? "var(--sage)" : "var(--clay)", whiteSpace: "nowrap" }}>
+                  {meta.sign > 0 ? "+" : "−"}{currency(e.monto).replace("−", "").replace("-", "")}
+                </div>
+                <button className="rd-btn" onClick={() => handleDelete(e.id)} aria-label="Eliminar movimiento" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
+                  <Icon name="trash" size={15} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button className="rd-btn rd-anim" onClick={() => setShowForm(true)} aria-label="Agregar movimiento" style={{ position: "fixed", bottom: 88, right: 24, width: 56, height: 56, borderRadius: "50%", background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px rgba(43,36,32,0.3)", zIndex: 41 }}>
+        <Icon name="plus" size={24} />
+      </button>
+
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(43,36,32,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={() => setShowForm(false)}>
+          <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} style={{ background: "var(--paper)", borderRadius: "20px 20px 0 0", padding: "20px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div className="rd-display" style={{ fontSize: 20, fontWeight: 600 }}>Nuevo movimiento</div>
+              <button className="rd-btn" type="button" onClick={() => setShowForm(false)} style={{ color: "var(--muted)" }}>
+                <Icon name="x" size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {Object.entries(TIPOS).map(([key, meta]) => (
+                <button key={key} type="button" className="rd-btn" onClick={() => setForm((f) => ({ ...f, tipo: key, categoria: "" }))} style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 14.5, fontWeight: 600, background: form.tipo === key ? meta.color : "#fff", color: form.tipo === key ? "#fff" : "var(--ink)", border: `1px solid ${form.tipo === key ? meta.color : "var(--paper-line)"}` }}>
+                  {meta.label}
+                </button>
+              ))}
+            </div>
+
+            <Field label="Fecha">
+              <input className="rd-input" type="date" value={form.fecha} max={todayStr()} onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))} required style={inputStyle} />
+            </Field>
+
+            <Field label="Monto (₡)">
+              <input className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
+            </Field>
+
+            {form.tipo === "salida" && (
+              <Field label="Categoría">
+                <select className="rd-select" value={form.categoria} onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))} style={inputStyle}>
+                  <option value="">Selecciona una categoría</option>
+                  {categories.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+                {categories.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>Aún no hay categorías. Agrégalas en Ajustes.</div>}
+              </Field>
+            )}
+
+            <Field label={form.tipo === "salida" ? "¿A quién se le pagó / persona responsable? (opcional)" : "¿De quién es? (opcional)"}>
+              <select className="rd-select" value={form.persona} onChange={(e) => setForm((f) => ({ ...f, persona: e.target.value }))} style={inputStyle}>
+                <option value="">Sin especificar</option>
+                {members.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                <option value="__otro__">Otro (escribir)</option>
+              </select>
+              {members.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>Aún no hay miembros ni familias cargados. Agrégalos en Ajustes.</div>}
+              {form.persona === "__otro__" && (
+                <input className="rd-input" type="text" placeholder="Nombre" value={form.personaOtro} onChange={(e) => setForm((f) => ({ ...f, personaOtro: e.target.value }))} style={{ ...inputStyle, marginTop: 8 }} />
+              )}
+            </Field>
+
+            <Field label="Descripción (opcional)">
+              <input className="rd-input" type="text" placeholder="Notas adicionales" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} style={inputStyle} />
+            </Field>
+
+            <button className="rd-btn" type="submit" style={{ width: "100%", marginTop: 8, padding: "13px 0", borderRadius: 10, background: "var(--ink)", color: "var(--paper)", fontSize: 16, fontWeight: 600 }}>
+              Guardar movimiento
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ SHELL (nav inferior + logout) ============
+function NavButton({ active, onClick, iconName, label }) {
+  return (
+    <button className="rd-btn" onClick={onClick} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 0", borderRadius: 10, color: active ? "var(--ink)" : "var(--muted)" }}>
+      <Icon name={iconName} size={19} />
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{label}</span>
+    </button>
+  );
+}
+
+function Shell({ user }) {
+  const [tab, setTab] = useState("ledger");
+  return (
+    <div style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 88px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 13.5, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+            <Icon name="wallet" size={14} />
+            <span>Libro de Tesorería</span>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--muted)" }}>{user.email}</div>
+        </div>
+        <button className="rd-btn" onClick={() => auth.signOut()} aria-label="Cerrar sesión" style={{ color: "var(--muted)", padding: 6, display: "flex" }}>
+          <Icon name="logout" size={18} />
+        </button>
+      </div>
+
+      {tab === "ledger" && <Ledger user={user} />}
+      {tab === "report" && <Report />}
+      {tab === "settings" && <Settings />}
+
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid var(--paper-line)", display: "flex", padding: "8px 12px calc(8px + env(safe-area-inset-bottom))", gap: 4, zIndex: 40 }}>
+        <NavButton active={tab === "ledger"} onClick={() => setTab("ledger")} iconName="book" label="Registro" />
+        <NavButton active={tab === "report"} onClick={() => setTab("report")} iconName="bars" label="Informe" />
+        <NavButton active={tab === "settings"} onClick={() => setTab("settings")} iconName="sliders" label="Ajustes" />
+      </div>
+    </div>
+  );
+}
+
+// ============ APP RAIZ ============
+function App() {
+  const [user, setUser] = useState(undefined);
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  if (user === undefined) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF6F0", color: "#8A7F6E", fontFamily: "system-ui" }}>Cargando…</div>;
+  }
+  if (!user) return <Login />;
+  return <Shell user={user} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
