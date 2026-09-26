@@ -42,7 +42,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // ============ FIREBASE ============
 // 1. Ve a https://console.firebase.google.com
@@ -155,6 +155,48 @@ function Field({ label, children }) {
     <div style={{ marginBottom: 14 }}>
       <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+function DateSelect({ value, onChange, maxDate }) {
+  const [y, m, d] = value ? value.split("-") : ["", "", ""];
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let yy = currentYear; yy >= currentYear - 4; yy--) years.push(yy);
+  function daysInMonth(yy, mm) {
+    if (!yy || !mm) return 31;
+    return new Date(Number(yy), Number(mm), 0).getDate();
+  }
+  const maxDays = daysInMonth(y, m);
+  const dayNum = d ? Number(d) : "";
+
+  function build(newD, newM, newY) {
+    if (newD && newM && newY) {
+      const dd = String(newD).padStart(2, "0");
+      const mm = String(newM).padStart(2, "0");
+      let candidate = `${newY}-${mm}-${dd}`;
+      if (maxDate && candidate > maxDate) candidate = maxDate;
+      onChange(candidate);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <select className="rd-select" style={{ ...inputStyle, flex: 0.8 }} value={dayNum} onChange={(e) => build(e.target.value, m || String(new Date().getMonth() + 1), y || String(currentYear))}>
+        <option value="">Día</option>
+        {Array.from({ length: maxDays }, (_, i) => i + 1).map((day) => <option key={day} value={day}>{day}</option>)}
+      </select>
+      <select className="rd-select" style={{ ...inputStyle, flex: 1.6 }} value={m ? Number(m) : ""} onChange={(e) => build(d || "1", e.target.value, y || String(currentYear))}>
+        <option value="">Mes</option>
+        {MESES_ES.map((mes, i) => <option key={i} value={i + 1}>{mes}</option>)}
+      </select>
+      <select className="rd-select" style={{ ...inputStyle, flex: 1 }} value={y ? Number(y) : ""} onChange={(e) => build(d || "1", m || String(new Date().getMonth() + 1), e.target.value)}>
+        <option value="">Año</option>
+        {years.map((yy) => <option key={yy} value={yy}>{yy}</option>)}
+      </select>
     </div>
   );
 }
@@ -424,7 +466,9 @@ function DailyReport() {
     <div>
       <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>{dateLabel(fecha)}</h1>
       <PrintButton />
-      <input className="rd-input no-print" type="date" value={fecha} max={todayStr()} onChange={(e) => setFecha(e.target.value)} style={{ ...inputStyle, marginBottom: 20 }} />
+      <div className="no-print" style={{ marginBottom: 20 }}>
+        <DateSelect value={fecha} maxDate={todayStr()} onChange={setFecha} />
+      </div>
 
       {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
 
@@ -748,6 +792,9 @@ function Ledger({ user }) {
     return () => unsub();
   }, []);
 
+  const [savedFlash, setSavedFlash] = useState(false);
+  const montoRef = useRef(null);
+
   function resetForm() {
     setForm({ fecha: todayStr(), tipo: "diezmo", monto: "", descripcion: "", persona: "", personaOtro: "", categoria: "" });
   }
@@ -764,8 +811,12 @@ function Ledger({ user }) {
         creadoPor: user.email,
         creado: firebase.firestore.FieldValue.serverTimestamp(),
       });
-      resetForm();
-      setShowForm(false);
+      // Deja la fecha, el tipo y la categoría igual para poder seguir agregando
+      // movimientos rápido (por ejemplo varios diezmos del mismo domingo).
+      setForm((f) => ({ ...f, monto: "", descripcion: "", persona: "", personaOtro: "" }));
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1300);
+      if (montoRef.current) montoRef.current.focus();
     } catch (err) {
       setError("No se pudo guardar el movimiento. Intenta de nuevo.");
     }
@@ -868,14 +919,20 @@ function Ledger({ user }) {
       </button>
 
       {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(43,36,32,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={() => setShowForm(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(43,36,32,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={() => { setShowForm(false); resetForm(); }}>
           <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} style={{ background: "var(--paper)", borderRadius: "20px 20px 0 0", padding: "20px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div className="rd-display" style={{ fontSize: 20, fontWeight: 600 }}>Nuevo movimiento</div>
-              <button className="rd-btn" type="button" onClick={() => setShowForm(false)} style={{ color: "var(--muted)" }}>
+              <button className="rd-btn" type="button" onClick={() => { setShowForm(false); resetForm(); }} style={{ color: "var(--muted)" }}>
                 <Icon name="x" size={20} />
               </button>
             </div>
+
+            {savedFlash && (
+              <div style={{ background: "#EAF2EC", color: "var(--sage)", padding: "9px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon name="trendUp" size={15} color="var(--sage)" /> Guardado — puedes agregar el siguiente
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               {Object.entries(TIPOS).map(([key, meta]) => (
@@ -886,11 +943,11 @@ function Ledger({ user }) {
             </div>
 
             <Field label="Fecha">
-              <input className="rd-input" type="date" value={form.fecha} max={todayStr()} onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))} required style={inputStyle} />
+              <DateSelect value={form.fecha} maxDate={todayStr()} onChange={(v) => setForm((f) => ({ ...f, fecha: v }))} />
             </Field>
 
             <Field label="Monto (₡)">
-              <input className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
+              <input ref={montoRef} className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
             </Field>
 
             {form.tipo === "salida" && (
