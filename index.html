@@ -22,6 +22,12 @@
   .rd-scroll::-webkit-scrollbar { height: 6px; }
   .rd-scroll::-webkit-scrollbar-thumb { background: #E7DFD2; border-radius: 3px; }
   @media (prefers-reduced-motion: reduce) { .rd-anim { transition: none !important; } }
+  @media print {
+    .no-print { display: none !important; }
+    html, body { background: #fff !important; }
+    .app-shell { padding: 0 !important; min-height: auto !important; background: #fff !important; }
+    a[href]::after { content: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -73,6 +79,8 @@ const ICON_PATHS = {
   landmark: "M3 22h18M6 18v-8M10 18v-8M14 18v-8M18 18v-8M2 10l10-6 10 6M2 10h20",
   calendar: "M8 2v4M16 2v4M3 9h18M4 5h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",
   lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z",
+  chevron: "m6 9 6 6 6-6",
+  printer: "M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z",
 };
 
 function Icon({ name, size = 18, color = "currentColor", style, filled }) {
@@ -318,11 +326,58 @@ function Report() {
   const [view, setView] = useState("dia");
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <TabButton active={view === "dia"} onClick={() => setView("dia")} iconName="calendar" label="Informe diario" />
-        <TabButton active={view === "miembro"} onClick={() => setView("miembro")} iconName="users" label="Por diezmador (mes)" />
+      <div className="rd-scroll no-print" style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", paddingBottom: 2 }}>
+        <TabButton active={view === "dia"} onClick={() => setView("dia")} iconName="calendar" label="Diario" />
+        <TabButton active={view === "miembro"} onClick={() => setView("miembro")} iconName="users" label="Diezmadores" />
+        <TabButton active={view === "resultados"} onClick={() => setView("resultados")} iconName="landmark" label="Resultados" />
       </div>
-      {view === "dia" ? <DailyReport /> : <MemberMonthReport />}
+      {view === "dia" ? <DailyReport /> : view === "miembro" ? <MemberMonthReport /> : <EstadoResultados />}
+    </div>
+  );
+}
+
+function PrintButton({ onClick }) {
+  return (
+    <button className="rd-btn rd-anim no-print" onClick={onClick || (() => window.print())} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, padding: "10px 16px", borderRadius: 10, background: "var(--ink)", color: "var(--paper)", fontSize: 14.5, fontWeight: 600 }}>
+      <Icon name="printer" size={16} color="var(--paper)" />
+      Descargar / imprimir PDF
+    </button>
+  );
+}
+
+function AccountRow({ title, iconName, color, total, count, isOpen, onToggle, children }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 12, marginBottom: 8, overflow: "hidden" }}>
+      <button className="rd-btn rd-anim" onClick={onToggle} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <Icon name={iconName} size={16} color={color} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{title}</div>
+            {count != null && <div style={{ fontSize: 12, color: "var(--muted)" }}>{count} {count === 1 ? "movimiento" : "movimientos"}</div>}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <span className="rd-mono" style={{ fontSize: 15.5, fontWeight: 600, color }}>{currency(total)}</span>
+          <Icon name="chevron" size={16} color="var(--muted)" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+        </div>
+      </button>
+      {isOpen && (
+        <div style={{ borderTop: "1px solid var(--paper-line)", padding: "6px 14px 10px", display: "flex", flexDirection: "column" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailLine({ left, sub, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px dashed var(--paper-line)" }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{left}</div>
+        {sub && <div style={{ fontSize: 12, color: "var(--muted)" }}>{sub}</div>}
+      </div>
+      <span className="rd-mono" style={{ fontSize: 14, fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>{right}</span>
     </div>
   );
 }
@@ -368,7 +423,8 @@ function DailyReport() {
   return (
     <div>
       <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>{dateLabel(fecha)}</h1>
-      <input className="rd-input" type="date" value={fecha} max={todayStr()} onChange={(e) => setFecha(e.target.value)} style={{ ...inputStyle, marginBottom: 20 }} />
+      <PrintButton />
+      <input className="rd-input no-print" type="date" value={fecha} max={todayStr()} onChange={(e) => setFecha(e.target.value)} style={{ ...inputStyle, marginBottom: 20 }} />
 
       {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
 
@@ -478,8 +534,9 @@ function MemberMonthReport() {
   return (
     <div>
       <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>Diezmos por persona — {monthLabel(selectedMonth)}</h1>
+      <PrintButton />
 
-      <div className="rd-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20 }}>
+      <div className="rd-scroll no-print" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20 }}>
         {months.map((m) => (
           <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
             {monthLabel(m)}
@@ -509,6 +566,151 @@ function MemberMonthReport() {
                 <div className="rd-mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--wood)", whiteSpace: "nowrap" }}>{currency(p.total)}</div>
               </div>
             ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============ ESTADO DE RESULTADOS ============
+function EstadoResultados() {
+  const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [openSet, setOpenSet] = useState(() => new Set());
+  const [printExpand, setPrintExpand] = useState(false);
+
+  useEffect(() => {
+    const unsub = db.collection("entries").onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); setError(null); },
+      () => { setError("No se pudo cargar el informe."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    function onAfterPrint() { setPrintExpand(false); }
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => window.removeEventListener("afterprint", onAfterPrint);
+  }, []);
+
+  const months = useMemo(() => {
+    const set = new Set(entries.map((e) => monthKey(e.fecha)));
+    set.add(monthKey(todayStr()));
+    return Array.from(set).sort().reverse();
+  }, [entries]);
+
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === selectedMonth), [entries, selectedMonth]);
+
+  const diezmoEntries = useMemo(() => monthEntries.filter((e) => e.tipo === "diezmo").sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [monthEntries]);
+  const ofrendaEntries = useMemo(() => monthEntries.filter((e) => e.tipo === "ofrenda").sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [monthEntries]);
+  const salidaEntries = useMemo(() => monthEntries.filter((e) => e.tipo === "salida"), [monthEntries]);
+
+  const salidasPorCategoria = useMemo(() => {
+    const map = {};
+    for (const e of salidaEntries) {
+      const key = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
+      if (!map[key]) map[key] = { total: 0, items: [] };
+      map[key].total += e.monto;
+      map[key].items.push(e);
+    }
+    return Object.entries(map)
+      .map(([categoria, datos]) => ({ categoria, ...datos, items: datos.items.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)) }))
+      .sort((a, b) => b.total - a.total);
+  }, [salidaEntries]);
+
+  const totales = useMemo(() => {
+    const diezmos = diezmoEntries.reduce((s, e) => s + e.monto, 0);
+    const ofrendas = ofrendaEntries.reduce((s, e) => s + e.monto, 0);
+    const salidas = salidaEntries.reduce((s, e) => s + e.monto, 0);
+    const remesa = diezmos * PORCENTAJE_REMESA;
+    const ingresos = diezmos + ofrendas;
+    return { diezmos, ofrendas, salidas, remesa, ingresos, disponible: ingresos - remesa - salidas };
+  }, [diezmoEntries, ofrendaEntries, salidaEntries]);
+
+  function toggle(key) {
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  function isOpen(key) {
+    return printExpand || openSet.has(key);
+  }
+
+  function handlePrint() {
+    setPrintExpand(true);
+    setTimeout(() => window.print(), 150);
+  }
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>Estado de resultados — {monthLabel(selectedMonth)}</h1>
+
+      <PrintButton onClick={handlePrint} />
+
+      <div className="rd-scroll no-print" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20 }}>
+        {months.map((m) => (
+          <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
+            {monthLabel(m)}
+          </button>
+        ))}
+      </div>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "24px 0" }}>Cargando…</div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+            <SummaryCard iconName="trendUp" label="Total ingresos" value={totales.ingresos} color="var(--sage)" />
+            <SummaryCard iconName="trendDown" label="Total gastos" value={totales.salidas} color="var(--clay)" />
+          </div>
+
+          <div className="rd-display" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--muted)", margin: "4px 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Ingresos</div>
+
+          <AccountRow title="Diezmos" iconName="handCoins" color="var(--wood)" total={totales.diezmos} count={diezmoEntries.length} isOpen={isOpen("diezmos")} onToggle={() => toggle("diezmos")}>
+            {diezmoEntries.length === 0 ? (
+              <div style={{ fontSize: 13.5, color: "var(--muted)", padding: "6px 0" }}>Sin diezmos este mes.</div>
+            ) : diezmoEntries.map((e) => (
+              <DetailLine key={e.id} left={e.persona || "Sin especificar"} sub={dateLabel(e.fecha)} right={currency(e.monto)} />
+            ))}
+          </AccountRow>
+
+          <AccountRow title="Ofrendas" iconName="trendUp" color="var(--gold)" total={totales.ofrendas} count={ofrendaEntries.length} isOpen={isOpen("ofrendas")} onToggle={() => toggle("ofrendas")}>
+            {ofrendaEntries.length === 0 ? (
+              <div style={{ fontSize: 13.5, color: "var(--muted)", padding: "6px 0" }}>Sin ofrendas este mes.</div>
+            ) : ofrendaEntries.map((e) => (
+              <DetailLine key={e.id} left={e.persona || e.descripcion || "Ofrenda"} sub={dateLabel(e.fecha)} right={currency(e.monto)} />
+            ))}
+          </AccountRow>
+
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, color: "var(--muted)", padding: "6px 4px 16px" }}>
+            <span>Remesa a iglesia nacional (10% de diezmos)</span>
+            <span className="rd-mono" style={{ color: "var(--wood)", fontWeight: 600 }}>− {currency(totales.remesa)}</span>
+          </div>
+
+          <div className="rd-display" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--muted)", margin: "4px 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Gastos / Salidas</div>
+
+          {salidasPorCategoria.length === 0 ? (
+            <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "20px 16px", textAlign: "center", color: "var(--muted)", fontSize: 14.5, marginBottom: 16 }}>Sin salidas registradas este mes.</div>
+          ) : salidasPorCategoria.map((cat) => (
+            <AccountRow key={cat.categoria} title={cat.categoria} iconName="tags" color="var(--clay)" total={cat.total} count={cat.items.length} isOpen={isOpen("cat-" + cat.categoria)} onToggle={() => toggle("cat-" + cat.categoria)}>
+              {cat.items.map((e) => (
+                <DetailLine key={e.id} left={e.descripcion || "Sin descripción"} sub={dateLabel(e.fecha)} right={currency(e.monto)} />
+              ))}
+            </AccountRow>
+          ))}
+
+          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 20 }}>
+            <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Disponible neto para la iglesia local</div>
+            <div style={{ fontSize: 13, color: "rgba(250,246,240,0.5)", marginBottom: 4 }}>(diezmos + ofrendas) − remesa 10% − gastos</div>
+            <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 23, fontWeight: 600, marginTop: 6 }}>{currency(totales.disponible)}</div>
           </div>
         </>
       )}
@@ -740,7 +942,7 @@ function NavButton({ active, onClick, iconName, label }) {
 function Shell({ user }) {
   const [tab, setTab] = useState("ledger");
   return (
-    <div style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 88px" }}>
+    <div className="app-shell" style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 88px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 13.5, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
@@ -749,7 +951,7 @@ function Shell({ user }) {
           </div>
           <div style={{ fontSize: 13.5, color: "var(--muted)" }}>{user.email}</div>
         </div>
-        <button className="rd-btn" onClick={() => auth.signOut()} aria-label="Cerrar sesión" style={{ color: "var(--muted)", padding: 6, display: "flex" }}>
+        <button className="rd-btn no-print" onClick={() => auth.signOut()} aria-label="Cerrar sesión" style={{ color: "var(--muted)", padding: 6, display: "flex" }}>
           <Icon name="logout" size={18} />
         </button>
       </div>
@@ -758,7 +960,7 @@ function Shell({ user }) {
       {tab === "report" && <Report />}
       {tab === "settings" && <Settings />}
 
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid var(--paper-line)", display: "flex", padding: "8px 12px calc(8px + env(safe-area-inset-bottom))", gap: 4, zIndex: 40 }}>
+      <div className="no-print" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid var(--paper-line)", display: "flex", padding: "8px 12px calc(8px + env(safe-area-inset-bottom))", gap: 4, zIndex: 40 }}>
         <NavButton active={tab === "ledger"} onClick={() => setTab("ledger")} iconName="book" label="Registro" />
         <NavButton active={tab === "report"} onClick={() => setTab("report")} iconName="bars" label="Informe" />
         <NavButton active={tab === "settings"} onClick={() => setTab("settings")} iconName="sliders" label="Ajustes" />
