@@ -21,6 +21,8 @@
   .rd-btn:focus-visible, .rd-select:focus-visible, .rd-input:focus-visible { outline: 2px solid #8B5E3C; outline-offset: 2px; }
   .rd-scroll::-webkit-scrollbar { height: 6px; }
   .rd-scroll::-webkit-scrollbar-thumb { background: #E7DFD2; border-radius: 3px; }
+  .rd-card { box-shadow: 0 1px 2px rgba(43,36,32,0.04), 0 6px 18px rgba(43,36,32,0.06); }
+  .rd-card-dark { box-shadow: 0 4px 18px rgba(43,36,32,0.22); }
   @media (prefers-reduced-motion: reduce) { .rd-anim { transition: none !important; } }
   @media print {
     .no-print { display: none !important; }
@@ -109,6 +111,74 @@ const TIPOS = {
 };
 
 const PORCENTAJE_REMESA = 0.10;
+
+function TrendChart({ entries }) {
+  const monthsData = useMemo(() => {
+    const hoy = todayStr();
+    const claves = [];
+    const base = new Date(hoy + "T00:00:00");
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      claves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return claves.map((mKey) => {
+      const del = entries.filter((e) => monthKey(e.fecha) === mKey);
+      const diezmos = del.filter((e) => e.tipo === "diezmo").reduce((s, e) => s + e.monto, 0);
+      const ofrendas = del.filter((e) => e.tipo === "ofrenda").reduce((s, e) => s + e.monto, 0);
+      const salidas = del.filter((e) => e.tipo === "salida").reduce((s, e) => s + e.monto, 0);
+      return { mKey, diezmos, ofrendas, salidas };
+    });
+  }, [entries]);
+
+  const maxVal = Math.max(1, ...monthsData.flatMap((m) => [m.diezmos, m.ofrendas, m.salidas]));
+  const chartH = 110;
+  const barW = 11;
+  const gapBar = 4;
+  const groupW = barW * 3 + gapBar * 2;
+  const groupGap = 20;
+  const svgW = monthsData.length * (groupW + groupGap);
+
+  function h(v) {
+    return maxVal > 0 ? Math.max(v > 0 ? 2 : 0, (v / maxVal) * chartH) : 0;
+  }
+
+  const hayDatos = monthsData.some((m) => m.diezmos || m.ofrendas || m.salidas);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+        {[["#8B5E3C", "Diezmos"], ["#C9A227", "Ofrendas"], ["#B5533C", "Gastos"]].map(([c, l]) => (
+          <div key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: c, display: "inline-block" }} />
+            {l}
+          </div>
+        ))}
+      </div>
+      {!hayDatos ? (
+        <div style={{ fontSize: 13.5, color: "var(--muted)", padding: "12px 0" }}>Aún no hay suficientes movimientos para mostrar una tendencia.</div>
+      ) : (
+        <div className="rd-scroll" style={{ overflowX: "auto" }}>
+          <svg width={Math.max(svgW, 260)} height={chartH + 30} style={{ display: "block" }}>
+            <line x1="0" y1={chartH} x2={Math.max(svgW, 260)} y2={chartH} stroke="#E7DFD2" strokeWidth="1" />
+            {monthsData.map((m, i) => {
+              const x0 = i * (groupW + groupGap);
+              return (
+                <g key={m.mKey}>
+                  <rect x={x0} y={chartH - h(m.diezmos)} width={barW} height={h(m.diezmos)} rx={2} fill="#8B5E3C" />
+                  <rect x={x0 + barW + gapBar} y={chartH - h(m.ofrendas)} width={barW} height={h(m.ofrendas)} rx={2} fill="#C9A227" />
+                  <rect x={x0 + (barW + gapBar) * 2} y={chartH - h(m.salidas)} width={barW} height={h(m.salidas)} rx={2} fill="#B5533C" />
+                  <text x={x0 + groupW / 2} y={chartH + 18} textAnchor="middle" fontSize="10.5" fill="#8A7F6E" fontFamily="'Public Sans', sans-serif">
+                    {monthLabel(m.mKey).slice(0, 3)}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function currency(n) {
   const v = Number(n) || 0;
@@ -279,12 +349,12 @@ function SummaryCard({ iconName, label, value, color, onClick, active }) {
   return (
     <Tag
       type={onClick ? "button" : undefined}
-      className={onClick ? "rd-btn rd-anim" : undefined}
+      className={(onClick ? "rd-btn rd-anim " : "") + "rd-card"}
       onClick={onClick}
       style={{
-        background: "#fff", border: `1px solid ${active ? color : "var(--paper-line)"}`, borderRadius: 14, padding: "14px 16px",
+        background: "#fff", border: `1px solid ${active ? color : "var(--paper-line)"}`, borderRadius: 16, padding: "14px 16px",
         textAlign: "left", width: "100%", boxSizing: "border-box", cursor: onClick ? "pointer" : "default",
-        boxShadow: active ? `0 0 0 2px ${color}33` : "none",
+        outline: active ? `2px solid ${color}55` : "none", outlineOffset: -1,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, color, fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>
@@ -491,7 +561,7 @@ function PrintButton({ onClick }) {
 
 function AccountRow({ title, iconName, color, total, count, isOpen, onToggle, children }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 12, marginBottom: 8, overflow: "hidden" }}>
+    <div className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, marginBottom: 8, overflow: "hidden" }}>
       <button className="rd-btn rd-anim" onClick={onToggle} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <Icon name={iconName} size={16} color={color} />
@@ -587,7 +657,7 @@ function DailyReport() {
             <SummaryCard iconName="trendUp" label="Total entradas" value={totals.ingresos} color="var(--sage)" />
           </div>
 
-          <div style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, padding: "16px", marginBottom: 12 }}>
+          <div className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, padding: "16px", marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <Icon name="landmark" size={16} color="var(--wood)" />
               <span style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>Remesa a iglesia nacional (10% de diezmos)</span>
@@ -598,7 +668,7 @@ function DailyReport() {
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, color: "var(--wood)" }}><span>A remesar</span><span className="rd-mono">{currency(totals.remesa)}</span></div>
           </div>
 
-          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
+          <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
             <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Queda disponible para la iglesia local</div>
             <div style={{ fontSize: 13, color: "rgba(250,246,240,0.5)", marginBottom: 4 }}>(diezmos + ofrendas) − remesa 10% − salidas del día</div>
             <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 23, fontWeight: 600, marginTop: 6 }}>{currency(totals.disponibleLocal)}</div>
@@ -698,7 +768,7 @@ function MemberMonthReport() {
         <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 14, padding: "32px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Sin diezmos registrados este mes.</div>
       ) : (
         <>
-          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 16 }}>
+          <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 16 }}>
             <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Total de diezmos del mes ({porDiezmador.reduce((s, p) => s + p.cantidad, 0)} movimientos)</div>
             <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 22, fontWeight: 600 }}>{currency(totalMes)}</div>
           </div>
@@ -853,7 +923,7 @@ function EstadoResultados() {
             </AccountRow>
           ))}
 
-          <div style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 20 }}>
+          <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 20 }}>
             <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Disponible neto para la iglesia local</div>
             <div style={{ fontSize: 13, color: "rgba(250,246,240,0.5)", marginBottom: 4 }}>(diezmos + ofrendas) − remesa 10% − gastos</div>
             <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 23, fontWeight: 600, marginTop: 6 }}>{currency(totales.disponible)}</div>
@@ -1178,10 +1248,15 @@ function Ledger({ user }) {
         <SummaryCard iconName="handCoins" label="Diezmos" value={totals.diezmos} color="var(--wood)" onClick={() => toggleFiltro("diezmo")} active={filtroTipo === "diezmo"} />
         <SummaryCard iconName="trendUp" label="Ofrendas" value={totals.ofrendas} color="var(--gold)" onClick={() => toggleFiltro("ofrenda")} active={filtroTipo === "ofrenda"} />
         <SummaryCard iconName="trendDown" label="Salidas" value={totals.salidas} color="var(--clay)" onClick={() => toggleFiltro("salida")} active={filtroTipo === "salida"} />
-        <button className="rd-btn rd-anim" type="button" onClick={() => setFiltroTipo(null)} style={{ background: "var(--ink)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between", textAlign: "left", width: "100%", boxSizing: "border-box" }}>
+        <button className="rd-btn rd-anim rd-card-dark" type="button" onClick={() => setFiltroTipo(null)} style={{ background: "var(--ink)", borderRadius: 16, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between", textAlign: "left", width: "100%", boxSizing: "border-box" }}>
           <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Balance</div>
           <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 22, fontWeight: 600 }}>{currency(totals.balance)}</div>
         </button>
+      </div>
+
+      <div className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 16, padding: "16px", marginBottom: 20 }}>
+        <div className="rd-display" style={{ fontSize: 15, fontWeight: 600, color: "var(--muted)", marginBottom: 12 }}>Tendencia — últimos 6 meses</div>
+        <TrendChart entries={entries} />
       </div>
 
       <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -1211,7 +1286,7 @@ function Ledger({ user }) {
           {visibleEntries.map((e) => {
             const meta = TIPOS[e.tipo];
             return (
-              <div key={e.id} onClick={() => openEditForm(e)} role="button" tabIndex={0} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid var(--paper-line)", borderLeft: `4px solid ${meta.color}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}>
+              <div key={e.id} onClick={() => openEditForm(e)} role="button" tabIndex={0} className="rd-card" style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid var(--paper-line)", borderLeft: `4px solid ${meta.color}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                     <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: meta.color }}>{meta.label}</span>
