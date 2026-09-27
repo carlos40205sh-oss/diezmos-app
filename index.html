@@ -559,6 +559,11 @@ function CategoryManager() {
     return Array.from(set).sort();
   }, [items]);
 
+  const gruposOpciones = useMemo(
+    () => gruposExistentes.filter((g) => g !== GRUPO_SIN_ASIGNAR).map((g) => ({ id: g, nombre: g })),
+    [gruposExistentes]
+  );
+
   function resetForm() {
     setNombre("");
     setGrupo("");
@@ -625,10 +630,6 @@ function CategoryManager() {
 
   return (
     <div>
-      <datalist id="grupos-existentes">
-        {gruposExistentes.map((g) => <option key={g} value={g} />)}
-      </datalist>
-
       <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
         {editingId && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FBF3E9", color: "var(--wood)", padding: "8px 12px", borderRadius: 9, fontSize: 13.5, fontWeight: 600 }}>
@@ -639,7 +640,15 @@ function CategoryManager() {
           </div>
         )}
         <input className="rd-input" type="text" value={nombre} onChange={(e) => { setNombre(e.target.value); if (error) setError(null); }} placeholder="Nombre del gasto (ej. Electricidad)" style={inputStyle} />
-        <input className="rd-input" type="text" list="grupos-existentes" value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo (ej. Servicios Públicos)" style={inputStyle} />
+        <SearchCreatePicker
+          value={grupo}
+          options={gruposOpciones}
+          onChange={(v) => setGrupo(v)}
+          onCreate={async () => {}}
+          placeholder="Grupo (ej. Servicios Públicos)"
+          emptyText="Todavía no hay grupos creados."
+          createLabel="Usar grupo nuevo"
+        />
         <div style={{ fontSize: 12.5, color: "var(--muted)" }}>El grupo agrupa varios gastos en los informes (ej. "Familia Pastoral" agrupa Asignación, Gasolina, etc.). Si lo dejas vacío, queda en "{GRUPO_SIN_ASIGNAR}".</div>
         <button className="rd-btn" type="submit" disabled={saving} style={{ padding: "12px 0", borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: saving ? 0.6 : 1, fontSize: 15, fontWeight: 600 }}>
           <Icon name={editingId ? "trendUp" : "plus"} size={16} color="var(--paper)" /> {editingId ? "Guardar cambios" : "Agregar categoría"}
