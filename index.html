@@ -544,6 +544,7 @@ function CategoryManager() {
   const [grupo, setGrupo] = useState("");
   const [saving, setSaving] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     const unsub = db.collection("categories").orderBy("nombre").onSnapshot(
@@ -558,19 +559,37 @@ function CategoryManager() {
     return Array.from(set).sort();
   }, [items]);
 
-  async function handleAdd(e) {
+  function resetForm() {
+    setNombre("");
+    setGrupo("");
+    setEditingId(null);
+  }
+
+  function startEdit(item) {
+    setNombre(item.nombre);
+    setGrupo((item.grupo && item.grupo !== GRUPO_SIN_ASIGNAR) ? item.grupo : "");
+    setEditingId(item.id);
+    setError(null);
+  }
+
+  async function handleSave(e) {
     e.preventDefault();
     const trimmed = nombre.trim();
     if (!trimmed) return;
-    const yaExiste = items.some((it) => it.nombre.trim().toLowerCase() === trimmed.toLowerCase());
+    const yaExiste = items.some((it) => it.id !== editingId && it.nombre.trim().toLowerCase() === trimmed.toLowerCase());
     if (yaExiste) {
       setError(`"${trimmed}" ya está en la lista.`);
       return;
     }
     setSaving(true);
     try {
-      await db.collection("categories").add({ nombre: trimmed, grupo: grupo.trim() || GRUPO_SIN_ASIGNAR });
-      setNombre("");
+      const payload = { nombre: trimmed, grupo: grupo.trim() || GRUPO_SIN_ASIGNAR };
+      if (editingId) {
+        await db.collection("categories").doc(editingId).update(payload);
+      } else {
+        await db.collection("categories").add(payload);
+      }
+      resetForm();
       setError(null);
     } catch (err) {
       setError("No se pudo guardar. Intenta de nuevo.");
@@ -582,6 +601,7 @@ function CategoryManager() {
   async function handleDelete(id) {
     try {
       await db.collection("categories").doc(id).delete();
+      if (editingId === id) resetForm();
     } catch (err) {
       setError("No se pudo eliminar.");
     }
@@ -605,18 +625,25 @@ function CategoryManager() {
 
   return (
     <div>
-      <form onSubmit={handleAdd} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+      <datalist id="grupos-existentes">
+        {gruposExistentes.map((g) => <option key={g} value={g} />)}
+      </datalist>
+
+      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+        {editingId && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FBF3E9", color: "var(--wood)", padding: "8px 12px", borderRadius: 9, fontSize: 13.5, fontWeight: 600 }}>
+            Editando categoría
+            <button type="button" className="rd-btn" onClick={resetForm} style={{ color: "var(--wood)", display: "flex", alignItems: "center", gap: 4 }}>
+              <Icon name="x" size={14} color="var(--wood)" /> Cancelar
+            </button>
+          </div>
+        )}
         <input className="rd-input" type="text" value={nombre} onChange={(e) => { setNombre(e.target.value); if (error) setError(null); }} placeholder="Nombre del gasto (ej. Electricidad)" style={inputStyle} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <input className="rd-input" type="text" list="grupos-existentes" value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo (ej. Servicios Públicos)" style={{ ...inputStyle, flex: 1 }} />
-          <datalist id="grupos-existentes">
-            {gruposExistentes.map((g) => <option key={g} value={g} />)}
-          </datalist>
-          <button className="rd-btn" type="submit" disabled={saving} style={{ width: 44, borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", opacity: saving ? 0.6 : 1, flexShrink: 0 }} aria-label="Agregar">
-            <Icon name="plus" size={18} />
-          </button>
-        </div>
+        <input className="rd-input" type="text" list="grupos-existentes" value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo (ej. Servicios Públicos)" style={inputStyle} />
         <div style={{ fontSize: 12.5, color: "var(--muted)" }}>El grupo agrupa varios gastos en los informes (ej. "Familia Pastoral" agrupa Asignación, Gasolina, etc.). Si lo dejas vacío, queda en "{GRUPO_SIN_ASIGNAR}".</div>
+        <button className="rd-btn" type="submit" disabled={saving} style={{ padding: "12px 0", borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: saving ? 0.6 : 1, fontSize: 15, fontWeight: 600 }}>
+          <Icon name={editingId ? "trendUp" : "plus"} size={16} color="var(--paper)" /> {editingId ? "Guardar cambios" : "Agregar categoría"}
+        </button>
       </form>
 
       {items.length > 4 && (
@@ -638,9 +665,9 @@ function CategoryManager() {
               <div className="rd-display" style={{ fontSize: 14, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{g}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {cats.map((item) => (
-                  <div key={item.id} className="rd-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "10px 14px" }}>
+                  <div key={item.id} onClick={() => startEdit(item)} role="button" tabIndex={0} className="rd-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: item.id === editingId ? "#FBF3E9" : "#fff", border: `1px solid ${item.id === editingId ? "var(--wood)" : "var(--paper-line)"}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer" }}>
                     <span style={{ fontSize: 15.5 }}>{item.nombre}</span>
-                    <button className="rd-btn" onClick={() => handleDelete(item.id)} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
+                    <button className="rd-btn" onClick={(ev) => { ev.stopPropagation(); handleDelete(item.id); }} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
                       <Icon name="trash" size={15} />
                     </button>
                   </div>
