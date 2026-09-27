@@ -431,7 +431,7 @@ function Settings() {
       {tab === "members" ? (
         <SimpleList collectionName="members" placeholder="Ej. Familia Rodríguez" emptyText="Todavía no has agregado miembros ni familias." />
       ) : (
-        <SimpleList collectionName="categories" placeholder="Ej. Sonido" emptyText="Todavía no has agregado categorías de salida." />
+        <CategoryManager />
       )}
     </div>
   );
@@ -526,6 +526,126 @@ function SimpleList({ collectionName, placeholder, emptyText }) {
               <button className="rd-btn" onClick={() => handleDelete(item.id)} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
                 <Icon name="trash" size={15} />
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const GRUPO_SIN_ASIGNAR = "Sin grupo";
+
+function CategoryManager() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [nombre, setNombre] = useState("");
+  const [grupo, setGrupo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+
+  useEffect(() => {
+    const unsub = db.collection("categories").orderBy("nombre").onSnapshot(
+      (snap) => { setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); },
+      () => { setError("No se pudo cargar la lista."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  const gruposExistentes = useMemo(() => {
+    const set = new Set(items.map((it) => (it.grupo && it.grupo.trim()) || GRUPO_SIN_ASIGNAR));
+    return Array.from(set).sort();
+  }, [items]);
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    const trimmed = nombre.trim();
+    if (!trimmed) return;
+    const yaExiste = items.some((it) => it.nombre.trim().toLowerCase() === trimmed.toLowerCase());
+    if (yaExiste) {
+      setError(`"${trimmed}" ya está en la lista.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await db.collection("categories").add({ nombre: trimmed, grupo: grupo.trim() || GRUPO_SIN_ASIGNAR });
+      setNombre("");
+      setError(null);
+    } catch (err) {
+      setError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await db.collection("categories").doc(id).delete();
+    } catch (err) {
+      setError("No se pudo eliminar.");
+    }
+  }
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => it.nombre.toLowerCase().includes(q) || ((it.grupo || "").toLowerCase().includes(q)));
+  }, [items, busqueda]);
+
+  const porGrupo = useMemo(() => {
+    const map = {};
+    for (const it of filtrados) {
+      const g = (it.grupo && it.grupo.trim()) || GRUPO_SIN_ASIGNAR;
+      if (!map[g]) map[g] = [];
+      map[g].push(it);
+    }
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtrados]);
+
+  return (
+    <div>
+      <form onSubmit={handleAdd} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+        <input className="rd-input" type="text" value={nombre} onChange={(e) => { setNombre(e.target.value); if (error) setError(null); }} placeholder="Nombre del gasto (ej. Electricidad)" style={inputStyle} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="rd-input" type="text" list="grupos-existentes" value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo (ej. Servicios Públicos)" style={{ ...inputStyle, flex: 1 }} />
+          <datalist id="grupos-existentes">
+            {gruposExistentes.map((g) => <option key={g} value={g} />)}
+          </datalist>
+          <button className="rd-btn" type="submit" disabled={saving} style={{ width: 44, borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", opacity: saving ? 0.6 : 1, flexShrink: 0 }} aria-label="Agregar">
+            <Icon name="plus" size={18} />
+          </button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>El grupo agrupa varios gastos en los informes (ej. "Familia Pastoral" agrupa Asignación, Gasolina, etc.). Si lo dejas vacío, queda en "{GRUPO_SIN_ASIGNAR}".</div>
+      </form>
+
+      {items.length > 4 && (
+        <input className="rd-input" type="text" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar gasto o grupo…" style={{ ...inputStyle, marginBottom: 16 }} />
+      )}
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "16px 0" }}>Cargando…</div>
+      ) : items.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Todavía no has agregado categorías de salida.</div>
+      ) : filtrados.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Sin resultados para "{busqueda}".</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {porGrupo.map(([g, cats]) => (
+            <div key={g}>
+              <div className="rd-display" style={{ fontSize: 14, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{g}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {cats.map((item) => (
+                  <div key={item.id} className="rd-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "10px 14px" }}>
+                    <span style={{ fontSize: 15.5 }}>{item.nombre}</span>
+                    <button className="rd-btn" onClick={() => handleDelete(item.id)} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
+                      <Icon name="trash" size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -793,6 +913,7 @@ function MemberMonthReport() {
 function EstadoResultados() {
   const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
   const [entries, setEntries] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [openSet, setOpenSet] = useState(() => new Set());
@@ -805,6 +926,17 @@ function EstadoResultados() {
     );
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("categories").onSnapshot((snap) => setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  const categoriaAGrupo = useMemo(() => {
+    const map = {};
+    categories.forEach((c) => { map[c.nombre.trim().toLowerCase()] = (c.grupo && c.grupo.trim()) || GRUPO_SIN_ASIGNAR; });
+    return map;
+  }, [categories]);
 
   useEffect(() => {
     function onAfterPrint() { setPrintExpand(false); }
@@ -824,18 +956,26 @@ function EstadoResultados() {
   const ofrendaEntries = useMemo(() => monthEntries.filter((e) => e.tipo === "ofrenda").sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [monthEntries]);
   const salidaEntries = useMemo(() => monthEntries.filter((e) => e.tipo === "salida"), [monthEntries]);
 
-  const salidasPorCategoria = useMemo(() => {
-    const map = {};
+  const salidasPorGrupo = useMemo(() => {
+    const grupos = {};
     for (const e of salidaEntries) {
-      const key = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
-      if (!map[key]) map[key] = { total: 0, items: [] };
-      map[key].total += e.monto;
-      map[key].items.push(e);
+      const categoria = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
+      const grupo = categoriaAGrupo[categoria.toLowerCase()] || GRUPO_SIN_ASIGNAR;
+      if (!grupos[grupo]) grupos[grupo] = { total: 0, categorias: {} };
+      grupos[grupo].total += e.monto;
+      if (!grupos[grupo].categorias[categoria]) grupos[grupo].categorias[categoria] = { total: 0, items: [] };
+      grupos[grupo].categorias[categoria].total += e.monto;
+      grupos[grupo].categorias[categoria].items.push(e);
     }
-    return Object.entries(map)
-      .map(([categoria, datos]) => ({ categoria, ...datos, items: datos.items.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)) }))
+    return Object.entries(grupos)
+      .map(([grupo, datos]) => ({
+        grupo, total: datos.total,
+        categorias: Object.entries(datos.categorias)
+          .map(([categoria, cd]) => ({ categoria, ...cd, items: cd.items.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)) }))
+          .sort((a, b) => b.total - a.total),
+      }))
       .sort((a, b) => b.total - a.total);
-  }, [salidaEntries]);
+  }, [salidaEntries, categoriaAGrupo]);
 
   const totales = useMemo(() => {
     const diezmos = diezmoEntries.reduce((s, e) => s + e.monto, 0);
@@ -913,14 +1053,24 @@ function EstadoResultados() {
 
           <div className="rd-display" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--muted)", margin: "4px 0 8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Gastos / Salidas</div>
 
-          {salidasPorCategoria.length === 0 ? (
+          {salidasPorGrupo.length === 0 ? (
             <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "20px 16px", textAlign: "center", color: "var(--muted)", fontSize: 14.5, marginBottom: 16 }}>Sin salidas registradas este mes.</div>
-          ) : salidasPorCategoria.map((cat) => (
-            <AccountRow key={cat.categoria} title={cat.categoria} iconName="tags" color="var(--clay)" total={cat.total} count={cat.items.length} isOpen={isOpen("cat-" + cat.categoria)} onToggle={() => toggle("cat-" + cat.categoria)}>
-              {cat.items.map((e) => (
-                <DetailLine key={e.id} left={e.descripcion || "Sin descripción"} sub={dateLabel(e.fecha)} right={currency(e.monto)} />
-              ))}
-            </AccountRow>
+          ) : salidasPorGrupo.map((g) => (
+            <div key={g.grupo} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px 8px" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{g.grupo}</span>
+                <span className="rd-mono" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--clay)" }}>{currency(g.total)}</span>
+              </div>
+              <div style={{ paddingLeft: 10, borderLeft: "2px solid var(--paper-line)" }}>
+                {g.categorias.map((cat) => (
+                  <AccountRow key={cat.categoria} title={cat.categoria} iconName="tags" color="var(--clay)" total={cat.total} count={cat.items.length} isOpen={isOpen("cat-" + g.grupo + "-" + cat.categoria)} onToggle={() => toggle("cat-" + g.grupo + "-" + cat.categoria)}>
+                    {cat.items.map((e) => (
+                      <DetailLine key={e.id} left={e.descripcion || "Sin descripción"} sub={dateLabel(e.fecha)} right={currency(e.monto)} />
+                    ))}
+                  </AccountRow>
+                ))}
+              </div>
+            </div>
           ))}
 
           <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 20 }}>
@@ -940,6 +1090,7 @@ function InformeTrimestral() {
   const [year, setYear] = useState(today.getFullYear());
   const [quarter, setQuarter] = useState(Math.floor(today.getMonth() / 3) + 1);
   const [entries, setEntries] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -950,6 +1101,17 @@ function InformeTrimestral() {
     );
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("categories").onSnapshot((snap) => setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  const categoriaAGrupo = useMemo(() => {
+    const map = {};
+    categories.forEach((c) => { map[c.nombre.trim().toLowerCase()] = (c.grupo && c.grupo.trim()) || GRUPO_SIN_ASIGNAR; });
+    return map;
+  }, [categories]);
 
   const years = useMemo(() => {
     const set = new Set(entries.map((e) => Number(e.fecha.slice(0, 4))));
@@ -969,22 +1131,29 @@ function InformeTrimestral() {
       const ofrendas = monthEntries.filter((e) => e.tipo === "ofrenda").reduce((s, e) => s + e.monto, 0);
       const remesa = diezmos * PORCENTAJE_REMESA;
       const salidaEntries = monthEntries.filter((e) => e.tipo === "salida");
-      const categoriasMap = {};
+      const gruposMap = {};
       for (const e of salidaEntries) {
-        const key = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
-        categoriasMap[key] = (categoriasMap[key] || 0) + e.monto;
+        const categoria = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
+        const grupo = categoriaAGrupo[categoria.toLowerCase()] || GRUPO_SIN_ASIGNAR;
+        if (!gruposMap[grupo]) gruposMap[grupo] = { total: 0, categorias: {} };
+        gruposMap[grupo].total += e.monto;
+        gruposMap[grupo].categorias[categoria] = (gruposMap[grupo].categorias[categoria] || 0) + e.monto;
       }
       const salidas = salidaEntries.reduce((s, e) => s + e.monto, 0);
       const ingresos = diezmos + ofrendas;
       const balance = ingresos - remesa - salidas;
-      return { mKey, diezmos, ofrendas, remesa, salidas, ingresos, balance, categoriasMap };
+      return { mKey, diezmos, ofrendas, remesa, salidas, ingresos, balance, gruposMap };
     });
-  }, [entries, monthsInQuarter]);
+  }, [entries, monthsInQuarter, categoriaAGrupo]);
 
-  const categoriasOrden = useMemo(() => {
-    const set = new Set();
-    monthStats.forEach((m) => Object.keys(m.categoriasMap).forEach((c) => set.add(c)));
-    return Array.from(set).sort();
+  const estructuraGastos = useMemo(() => {
+    const gruposSet = new Set();
+    monthStats.forEach((m) => Object.keys(m.gruposMap).forEach((g) => gruposSet.add(g)));
+    return Array.from(gruposSet).sort().map((grupo) => {
+      const categoriasSet = new Set();
+      monthStats.forEach((m) => { if (m.gruposMap[grupo]) Object.keys(m.gruposMap[grupo].categorias).forEach((c) => categoriasSet.add(c)); });
+      return { grupo, categorias: Array.from(categoriasSet).sort() };
+    });
   }, [monthStats]);
 
   const totalTrimestre = useMemo(() => {
@@ -994,12 +1163,13 @@ function InformeTrimestral() {
     const salidas = monthStats.reduce((s, m) => s + m.salidas, 0);
     const ingresos = diezmos + ofrendas;
     const balance = ingresos - remesa - salidas;
-    const categoriasMap = {};
-    categoriasOrden.forEach((cat) => {
-      categoriasMap[cat] = monthStats.reduce((s, m) => s + (m.categoriasMap[cat] || 0), 0);
-    });
-    return { diezmos, ofrendas, remesa, salidas, ingresos, balance, categoriasMap };
-  }, [monthStats, categoriasOrden]);
+    const grupoTotal = (grupo) => monthStats.reduce((s, m) => s + (m.gruposMap[grupo] ? m.gruposMap[grupo].total : 0), 0);
+    const categoriaTotal = (grupo, categoria) => monthStats.reduce((s, m) => s + ((m.gruposMap[grupo] && m.gruposMap[grupo].categorias[categoria]) || 0), 0);
+    return { diezmos, ofrendas, remesa, salidas, ingresos, balance, grupoTotal, categoriaTotal };
+  }, [monthStats]);
+
+  function grupoMes(m, grupo) { return m.gruposMap[grupo] ? m.gruposMap[grupo].total : 0; }
+  function categoriaMes(m, grupo, categoria) { return (m.gruposMap[grupo] && m.gruposMap[grupo].categorias[categoria]) || 0; }
 
   const cellStyle = { padding: "9px 12px", fontSize: 13.5, whiteSpace: "nowrap", textAlign: "right" };
   const labelCellStyle = { padding: "9px 12px", fontSize: 13.5, textAlign: "left", color: "var(--muted)", position: "sticky", left: 0, background: "#fff" };
@@ -1059,12 +1229,26 @@ function InformeTrimestral() {
                 {monthStats.map((m) => <td key={m.mKey} className="rd-mono" style={cellStyle}>− {currency(m.remesa)}</td>)}
                 <td className="rd-mono" style={{ ...cellStyle, fontWeight: 600, background: "#FBF3E9" }}>− {currency(totalTrimestre.remesa)}</td>
               </tr>
-              {categoriasOrden.map((cat) => (
-                <tr key={cat} style={{ borderBottom: "1px solid var(--paper-line)" }}>
-                  <td style={labelCellStyle}>{cat}</td>
-                  {monthStats.map((m) => <td key={m.mKey} className="rd-mono" style={cellStyle}>{m.categoriasMap[cat] ? `− ${currency(m.categoriasMap[cat])}` : "—"}</td>)}
-                  <td className="rd-mono" style={{ ...cellStyle, fontWeight: 600, background: "#FBF3E9" }}>{totalTrimestre.categoriasMap[cat] ? `− ${currency(totalTrimestre.categoriasMap[cat])}` : "—"}</td>
-                </tr>
+              {estructuraGastos.map((g) => (
+                <React.Fragment key={g.grupo}>
+                  {g.categorias.map((cat) => (
+                    <tr key={cat} style={{ borderBottom: "1px solid var(--paper-line)" }}>
+                      <td style={{ ...labelCellStyle, paddingLeft: 26 }}>{cat}</td>
+                      {monthStats.map((m) => {
+                        const v = categoriaMes(m, g.grupo, cat);
+                        return <td key={m.mKey} className="rd-mono" style={cellStyle}>{v ? `− ${currency(v)}` : "—"}</td>;
+                      })}
+                      <td className="rd-mono" style={{ ...cellStyle, fontWeight: 600, background: "#FBF3E9" }}>
+                        {(() => { const t = totalTrimestre.categoriaTotal(g.grupo, cat); return t ? `− ${currency(t)}` : "—"; })()}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderBottom: "1px solid var(--paper-line)", background: "#FAF6F0" }}>
+                    <td style={{ ...labelCellStyle, fontWeight: 700, background: "#FAF6F0" }}>Total {g.grupo}</td>
+                    {monthStats.map((m) => <td key={m.mKey} className="rd-mono" style={{ ...cellStyle, fontWeight: 700 }}>− {currency(grupoMes(m, g.grupo))}</td>)}
+                    <td className="rd-mono" style={{ ...cellStyle, fontWeight: 700, background: "#FBF3E9" }}>− {currency(totalTrimestre.grupoTotal(g.grupo))}</td>
+                  </tr>
+                </React.Fragment>
               ))}
               <tr style={{ borderBottom: "1px solid var(--paper-line)" }}>
                 <td style={{ ...labelCellStyle, fontWeight: 700, color: "var(--clay)" }}>Total gastos</td>
@@ -1163,7 +1347,7 @@ function Ledger({ user }) {
     const yaExiste = categories.some((c) => c.nombre.trim().toLowerCase() === trimmed.toLowerCase());
     if (yaExiste) return;
     try {
-      await db.collection("categories").add({ nombre: trimmed });
+      await db.collection("categories").add({ nombre: trimmed, grupo: GRUPO_SIN_ASIGNAR });
     } catch (err) {
       // Si falla el guardado de la categoría, igual dejamos el nombre en el movimiento.
     }
