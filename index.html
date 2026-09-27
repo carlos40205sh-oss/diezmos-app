@@ -83,6 +83,7 @@ const ICON_PATHS = {
   lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z",
   chevron: "m6 9 6 6 6-6",
   printer: "M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z",
 };
 
 function Icon({ name, size = 18, color = "currentColor", style, filled }) {
@@ -271,6 +272,113 @@ function DateSelect({ value, onChange, maxDate }) {
   );
 }
 
+const DIAS_SEMANA_ES = ["D", "L", "M", "M", "J", "V", "S"];
+
+function formatFechaLarga(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("es-CR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function CalendarPicker({ value, onChange, maxDate }) {
+  const [open, setOpen] = useState(false);
+  const base = value || maxDate || todayStr();
+  const [baseY, baseM] = base.split("-").map(Number);
+  const [viewYear, setViewYear] = useState(baseY);
+  const [viewMonth, setViewMonth] = useState(baseM);
+
+  useEffect(() => {
+    if (open) {
+      const [yy, mm] = (value || maxDate || todayStr()).split("-").map(Number);
+      setViewYear(yy);
+      setViewMonth(mm);
+    }
+  }, [open]);
+
+  function daysInMonth(yy, mm) { return new Date(yy, mm, 0).getDate(); }
+  function firstWeekday(yy, mm) { return new Date(yy, mm - 1, 1).getDay(); }
+
+  function prevMonth() {
+    if (viewMonth === 1) { setViewMonth(12); setViewYear((y) => y - 1); } else { setViewMonth((m) => m - 1); }
+  }
+  function nextMonth() {
+    if (viewMonth === 12) { setViewMonth(1); setViewYear((y) => y + 1); } else { setViewMonth((m) => m + 1); }
+  }
+
+  function pick(day) {
+    const mm = String(viewMonth).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    const candidate = `${viewYear}-${mm}-${dd}`;
+    if (maxDate && candidate > maxDate) return;
+    onChange(candidate);
+    setOpen(false);
+  }
+
+  const totalDays = daysInMonth(viewYear, viewMonth);
+  const startWeekday = firstWeekday(viewYear, viewMonth);
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="rd-btn"
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...inputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", textAlign: "left", cursor: "pointer" }}
+      >
+        <span style={{ color: value ? "var(--ink)" : "var(--muted)" }}>{value ? formatFechaLarga(value) : "Toca para elegir la fecha"}</span>
+        <Icon name="calendar" size={17} color="var(--muted)" />
+      </button>
+      {open && (
+        <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 14, boxShadow: "0 8px 24px rgba(43,36,32,0.18)", padding: 14, zIndex: 60 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <button type="button" className="rd-btn" onClick={prevMonth} style={{ padding: 8, color: "var(--ink)", display: "flex" }} aria-label="Mes anterior">
+              <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} />
+            </button>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{MESES_ES[viewMonth - 1]} {viewYear}</div>
+            <button type="button" className="rd-btn" onClick={nextMonth} style={{ padding: 8, color: "var(--ink)", display: "flex" }} aria-label="Mes siguiente">
+              <Icon name="chevron" size={16} style={{ transform: "rotate(-90deg)" }} />
+            </button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+            {DIAS_SEMANA_ES.map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>{d}</div>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {cells.map((day, i) => {
+              if (day == null) return <div key={i} />;
+              const mm = String(viewMonth).padStart(2, "0");
+              const dd = String(day).padStart(2, "0");
+              const candidate = `${viewYear}-${mm}-${dd}`;
+              const disabled = !!(maxDate && candidate > maxDate);
+              const selected = value === candidate;
+              const isToday = candidate === todayStr();
+              return (
+                <button
+                  key={i} type="button" disabled={disabled} onClick={() => pick(day)} className="rd-btn"
+                  style={{
+                    aspectRatio: "1", borderRadius: 8, fontSize: 14, fontWeight: selected ? 700 : 500,
+                    background: selected ? "var(--ink)" : "transparent",
+                    color: disabled ? "var(--paper-line)" : selected ? "var(--paper)" : "var(--ink)",
+                    border: isToday && !selected ? "1px solid var(--wood)" : "1px solid transparent",
+                    cursor: disabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" className="rd-btn" onClick={() => { onChange(todayStr()); setOpen(false); }} style={{ marginTop: 10, width: "100%", textAlign: "center", padding: "8px 0", borderRadius: 8, fontSize: 13.5, fontWeight: 600, color: "var(--wood)", background: "#FBF3E9" }}>
+            Hoy
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const METODOS_PAGO = [
   { key: "efectivo", label: "Efectivo" },
   { key: "sinpe", label: "SINPE" },
@@ -344,8 +452,16 @@ function SearchCreatePicker({ value, options, onChange, onCreate, placeholder, e
   );
 }
 
+const CHIP_BG = {
+  "var(--wood)": "#F3E9DD",
+  "var(--gold)": "#FBF3D9",
+  "var(--clay)": "#F7E5DF",
+  "var(--sage)": "#EAF2EC",
+};
+
 function SummaryCard({ iconName, label, value, color, onClick, active }) {
   const Tag = onClick ? "button" : "div";
+  const chipBg = CHIP_BG[color] || "var(--paper-line)";
   return (
     <Tag
       type={onClick ? "button" : undefined}
@@ -357,9 +473,11 @@ function SummaryCard({ iconName, label, value, color, onClick, active }) {
         outline: active ? `2px solid ${color}55` : "none", outlineOffset: -1,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, color, fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>
-        <Icon name={iconName} size={16} color={color} />
-        {label}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: chipBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon name={iconName} size={17} color={color} />
+        </div>
+        <div style={{ color, fontSize: 13.5, fontWeight: 600 }}>{label}</div>
       </div>
       <div className="rd-mono" style={{ fontSize: 20, fontWeight: 600, color: "var(--ink)" }}>{currency(value)}</div>
     </Tag>
@@ -418,20 +536,157 @@ function Login() {
 }
 
 // ============ AJUSTES (miembros y categorias) ============
-function Settings() {
+function Settings({ rol, currentEmail }) {
   const [tab, setTab] = useState("members");
   return (
     <div>
       <h1 className="rd-display" style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 600 }}>Ajustes</h1>
       <div style={{ fontSize: 14.5, color: "var(--muted)", marginBottom: 20 }}>Administra los miembros/familias y las categorías de salida.</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         <TabButton active={tab === "members"} onClick={() => setTab("members")} iconName="users" label="Miembros / familias" />
         <TabButton active={tab === "categories"} onClick={() => setTab("categories")} iconName="tags" label="Categorías de salida" />
+        {rol === "admin" && (
+          <TabButton active={tab === "users"} onClick={() => setTab("users")} iconName="shield" label="Usuarios" />
+        )}
       </div>
       {tab === "members" ? (
         <SimpleList collectionName="members" placeholder="Ej. Familia Rodríguez" emptyText="Todavía no has agregado miembros ni familias." />
-      ) : (
+      ) : tab === "categories" ? (
         <CategoryManager />
+      ) : (
+        <UsersManager currentEmail={currentEmail} />
+      )}
+    </div>
+  );
+}
+
+const ROLES = [
+  { key: "admin", label: "Administrador", desc: "Acceso completo y puede gestionar usuarios" },
+  { key: "tesorero", label: "Tesorero", desc: "Acceso completo para registrar y ver todo" },
+  { key: "pastor", label: "Pastor", desc: "Solo ve el resumen del mes y los informes" },
+];
+
+function UsersManager({ currentEmail }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [correo, setCorreo] = useState("");
+  const [rolForm, setRolForm] = useState("tesorero");
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  useEffect(() => {
+    const unsub = db.collection("usuarios").onSnapshot(
+      (snap) => { setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); },
+      () => { setError("No se pudo cargar la lista de usuarios."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  function resetForm() {
+    setCorreo("");
+    setRolForm("tesorero");
+    setEditingId(null);
+  }
+
+  function startEdit(item) {
+    setCorreo(item.id);
+    setRolForm(item.rol || "tesorero");
+    setEditingId(item.id);
+    setError(null);
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    const trimmed = correo.trim().toLowerCase();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      await db.collection("usuarios").doc(trimmed).set({ rol: rolForm }, { merge: true });
+      resetForm();
+      setError(null);
+    } catch (err) {
+      setError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    if (id === currentEmail) {
+      setError("No puedes quitar tu propio acceso de administrador desde aquí.");
+      return;
+    }
+    try {
+      await db.collection("usuarios").doc(id).delete();
+      if (editingId === id) resetForm();
+    } catch (err) {
+      setError("No se pudo eliminar.");
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 14, background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 10, padding: "10px 12px" }}>
+        Aquí decides qué puede hacer cada correo. Si un correo no está en esta lista, entra con acceso completo (Tesorero) por defecto.
+      </div>
+
+      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {editingId && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FBF3E9", color: "var(--wood)", padding: "8px 12px", borderRadius: 9, fontSize: 13.5, fontWeight: 600 }}>
+            Editando {editingId}
+            <button type="button" className="rd-btn" onClick={resetForm} style={{ color: "var(--wood)", display: "flex", alignItems: "center", gap: 4 }}>
+              <Icon name="x" size={14} color="var(--wood)" /> Cancelar
+            </button>
+          </div>
+        )}
+        <input
+          className="rd-input" type="email" value={correo} disabled={!!editingId}
+          onChange={(e) => { setCorreo(e.target.value); if (error) setError(null); }}
+          placeholder="correo@ejemplo.com" style={{ ...inputStyle, opacity: editingId ? 0.6 : 1 }}
+        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {ROLES.map((r) => (
+            <button
+              key={r.key} type="button" className="rd-btn" onClick={() => setRolForm(r.key)}
+              style={{ textAlign: "left", padding: "10px 12px", borderRadius: 10, background: rolForm === r.key ? "var(--ink)" : "#fff", color: rolForm === r.key ? "var(--paper)" : "var(--ink)", border: `1px solid ${rolForm === r.key ? "var(--ink)" : "var(--paper-line)"}` }}
+            >
+              <div style={{ fontSize: 14.5, fontWeight: 600 }}>{r.label}</div>
+              <div style={{ fontSize: 12.5, color: rolForm === r.key ? "rgba(250,246,240,0.75)" : "var(--muted)" }}>{r.desc}</div>
+            </button>
+          ))}
+        </div>
+        <button className="rd-btn" type="submit" disabled={saving} style={{ padding: "12px 0", borderRadius: 9, background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: saving ? 0.6 : 1, fontSize: 15, fontWeight: 600 }}>
+          <Icon name={editingId ? "trendUp" : "plus"} size={16} color="var(--paper)" /> {editingId ? "Guardar cambios" : "Agregar usuario"}
+        </button>
+      </form>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "16px 0" }}>Cargando…</div>
+      ) : items.length === 0 ? (
+        <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 15 }}>Todavía no has agregado ningún correo aquí. Todos entran con acceso completo.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((item) => {
+            const r = ROLES.find((x) => x.key === item.rol) || ROLES[1];
+            return (
+              <div
+                key={item.id} onClick={() => startEdit(item)} role="button" tabIndex={0} className="rd-card"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: item.id === editingId ? "#FBF3E9" : "#fff", border: `1px solid ${item.id === editingId ? "var(--wood)" : "var(--paper-line)"}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer" }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.id}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--wood)", fontWeight: 600 }}>{r.label}</div>
+                </div>
+                <button className="rd-btn" onClick={(ev) => { ev.stopPropagation(); handleDelete(item.id); }} aria-label="Eliminar" style={{ color: "var(--muted)", padding: 4, display: "flex" }}>
+                  <Icon name="trash" size={15} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1316,7 +1571,7 @@ function Ledger({ user }) {
   const [filtroTipo, setFiltroTipo] = useState(null);
   const [editingId, setEditingId] = useState(null);
 
-  const [form, setForm] = useState({ fecha: todayStr(), tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
+  const [form, setForm] = useState({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
 
   useEffect(() => {
     const unsub = db.collection("entries").orderBy("fecha", "desc").onSnapshot(
@@ -1340,7 +1595,7 @@ function Ledger({ user }) {
   const montoRef = useRef(null);
 
   function resetForm() {
-    setForm({ fecha: todayStr(), tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
+    setForm({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
   }
 
   function closeForm() {
@@ -1561,7 +1816,7 @@ function Ledger({ user }) {
             </div>
 
             <Field label="Fecha">
-              <DateSelect value={form.fecha} maxDate={todayStr()} onChange={(v) => setForm((f) => ({ ...f, fecha: v }))} />
+              <CalendarPicker value={form.fecha} maxDate={todayStr()} onChange={(v) => setForm((f) => ({ ...f, fecha: v }))} />
             </Field>
 
             <Field label="Monto (₡)">
@@ -1635,7 +1890,7 @@ function NavButton({ active, onClick, iconName, label }) {
   );
 }
 
-function Shell({ user }) {
+function Shell({ user, rol }) {
   const [tab, setTab] = useState("ledger");
   return (
     <div className="app-shell" style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 88px" }}>
@@ -1654,7 +1909,7 @@ function Shell({ user }) {
 
       {tab === "ledger" && <Ledger user={user} />}
       {tab === "report" && <Report />}
-      {tab === "settings" && <Settings />}
+      {tab === "settings" && <Settings rol={rol} currentEmail={user.email.trim().toLowerCase()} />}
 
       <div className="no-print" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid var(--paper-line)", display: "flex", padding: "8px 12px calc(8px + env(safe-area-inset-bottom))", gap: 4, zIndex: 40 }}>
         <NavButton active={tab === "ledger"} onClick={() => setTab("ledger")} iconName="book" label="Registro" />
@@ -1665,20 +1920,146 @@ function Shell({ user }) {
   );
 }
 
+// ============ VISTA SIMPLE DEL PASTOR ============
+function PastorView({ user }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [informe, setInforme] = useState(null); // null | "mes" | "trimestre"
+
+  useEffect(() => {
+    const unsub = db.collection("entries").onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, []);
+
+  const viewKey = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, [monthOffset]);
+
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === viewKey), [entries, viewKey]);
+
+  const totals = useMemo(() => {
+    let diezmos = 0, ofrendas = 0, salidas = 0;
+    for (const e of monthEntries) {
+      if (e.tipo === "diezmo") diezmos += e.monto;
+      else if (e.tipo === "ofrenda") ofrendas += e.monto;
+      else if (e.tipo === "salida") salidas += e.monto;
+    }
+    return { diezmos, ofrendas, salidas, balance: diezmos + ofrendas - salidas };
+  }, [monthEntries]);
+
+  if (informe) {
+    return (
+      <div className="app-shell" style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 40px" }}>
+        <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
+          <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
+        </button>
+        {informe === "mes" ? <EstadoResultados /> : <InformeTrimestral />}
+      </div>
+    );
+  }
+
+  const stats = [
+    { key: "diezmo", label: "Diezmos", value: totals.diezmos, color: "var(--wood)", bg: "#F3E9DD", icon: "handCoins" },
+    { key: "ofrenda", label: "Ofrendas", value: totals.ofrendas, color: "var(--gold)", bg: "#FBF3D9", icon: "trendUp" },
+    { key: "salida", label: "Gastos", value: totals.salidas, color: "var(--clay)", bg: "#F7E5DF", icon: "trendDown" },
+  ];
+
+  return (
+    <div className="app-shell" style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "22px 22px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 700 }}>Iglesia · Tesorería</div>
+            <div className="rd-display" style={{ fontSize: 26, fontWeight: 600, marginTop: 2 }}>Resumen del mes</div>
+          </div>
+          <button className="rd-btn no-print" onClick={() => auth.signOut()} aria-label="Cerrar sesión" style={{ width: 44, height: 44, borderRadius: 12, background: "#fff", border: "1px solid var(--paper-line)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="logout" size={20} color="var(--muted)" />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 18px 4px" }}>
+        <button className="rd-btn" onClick={() => setMonthOffset((o) => o - 1)} aria-label="Mes anterior" style={{ width: 48, height: 48, borderRadius: 14, border: "1px solid var(--paper-line)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon name="chevron" size={18} style={{ transform: "rotate(90deg)" }} />
+        </button>
+        <div className="rd-display" style={{ fontSize: 21, fontWeight: 600 }}>{monthLabel(viewKey)}</div>
+        <button className="rd-btn" onClick={() => setMonthOffset((o) => Math.min(0, o + 1))} disabled={monthOffset >= 0} aria-label="Mes siguiente" style={{ width: 48, height: 48, borderRadius: 14, border: "1px solid var(--paper-line)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", opacity: monthOffset >= 0 ? 0.35 : 1 }}>
+          <Icon name="chevron" size={18} style={{ transform: "rotate(-90deg)" }} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px 28px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {loading ? (
+          <div style={{ textAlign: "center", color: "var(--muted)", padding: "24px 0" }}>Cargando…</div>
+        ) : (
+          <React.Fragment>
+            {stats.map((s) => (
+              <div key={s.key} className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 18, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 46, height: 46, borderRadius: 13, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Icon name={s.icon} size={22} color={s.color} />
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: s.color }}>{s.label}</div>
+                </div>
+                <div className="rd-mono" style={{ fontSize: 22, fontWeight: 600 }}>{currency(s.value)}</div>
+              </div>
+            ))}
+
+            <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 18, padding: 20, marginTop: 4 }}>
+              <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Queda disponible</div>
+              <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 30, fontWeight: 600 }}>{currency(totals.balance)}</div>
+            </div>
+
+            <button className="rd-btn rd-anim" onClick={() => setInforme("mes")} style={{ marginTop: 10, width: "100%", padding: "17px 0", borderRadius: 16, background: "var(--wood)", color: "var(--paper)", border: "none", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="printer" size={20} color="var(--paper)" /> Ver informe del mes (PDF)
+            </button>
+
+            <button className="rd-btn rd-anim" onClick={() => setInforme("trimestre")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="receipt" size={20} color="var(--ink)" /> Ver informe trimestral
+            </button>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============ APP RAIZ ============
 function App() {
   const [user, setUser] = useState(undefined);
+  const [rol, setRol] = useState(null);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setUser(u));
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!user) { setRol(null); return; }
+    const email = user.email.trim().toLowerCase();
+    const unsub = db.collection("usuarios").doc(email).onSnapshot(
+      (doc) => setRol(doc.exists ? (doc.data().rol || "tesorero") : "tesorero"),
+      () => setRol("tesorero")
+    );
+    return () => unsub();
+  }, [user]);
+
   if (user === undefined) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF6F0", color: "#8A7F6E", fontFamily: "system-ui" }}>Cargando…</div>;
   }
   if (!user) return <Login />;
-  return <Shell user={user} />;
+  if (rol === null) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF6F0", color: "#8A7F6E", fontFamily: "system-ui" }}>Cargando…</div>;
+  }
+  if (rol === "pastor") return <PastorView user={user} />;
+  return <Shell user={user} rol={rol} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
