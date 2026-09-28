@@ -84,6 +84,7 @@ const ICON_PATHS = {
   chevron: "m6 9 6 6 6-6",
   printer: "M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z",
   shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z",
+  home: "M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V9.5Z",
 };
 
 function Icon({ name, size = 18, color = "currentColor", style, filled }) {
@@ -1560,16 +1561,18 @@ function InformeTrimestral() {
 }
 
 // ============ REGISTRO (pantalla principal) ============
-function Ledger({ user }) {
+// ============ INICIO (resumen tipo Pastor + lista editable) ============
+function Inicio({ user, onIrRegistro }) {
   const [entries, setEntries] = useState([]);
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
+  const [monthOffset, setMonthOffset] = useState(0);
   const [filtroTipo, setFiltroTipo] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [informe, setInforme] = useState(null); // null | "mes" | "trimestre"
 
   const [form, setForm] = useState({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
 
@@ -1591,23 +1594,10 @@ function Ledger({ user }) {
     return () => unsub();
   }, []);
 
-  const [savedFlash, setSavedFlash] = useState(false);
-  const montoRef = useRef(null);
-
-  function resetForm() {
-    setForm({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
-  }
-
   function closeForm() {
     setShowForm(false);
     setEditingId(null);
-    resetForm();
-  }
-
-  function openNewForm() {
-    resetForm();
-    setEditingId(null);
-    setShowForm(true);
+    setForm({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
   }
 
   function openEditForm(entry) {
@@ -1625,11 +1615,7 @@ function Ledger({ user }) {
     if (!trimmed) return;
     const yaExiste = members.some((m) => m.nombre.trim().toLowerCase() === trimmed.toLowerCase());
     if (yaExiste) return;
-    try {
-      await db.collection("members").add({ nombre: trimmed });
-    } catch (err) {
-      // Si falla el guardado del miembro, igual dejamos el nombre en el movimiento.
-    }
+    try { await db.collection("members").add({ nombre: trimmed }); } catch (err) {}
   }
 
   async function handleCreateCategory(nombre) {
@@ -1637,16 +1623,12 @@ function Ledger({ user }) {
     if (!trimmed) return;
     const yaExiste = categories.some((c) => c.nombre.trim().toLowerCase() === trimmed.toLowerCase());
     if (yaExiste) return;
-    try {
-      await db.collection("categories").add({ nombre: trimmed, grupo: GRUPO_SIN_ASIGNAR });
-    } catch (err) {
-      // Si falla el guardado de la categoría, igual dejamos el nombre en el movimiento.
-    }
+    try { await db.collection("categories").add({ nombre: trimmed, grupo: GRUPO_SIN_ASIGNAR }); } catch (err) {}
   }
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.fecha || !form.monto || Number(form.monto) <= 0) return;
+    if (!editingId || !form.fecha || !form.monto || Number(form.monto) <= 0) return;
     const payload = {
       fecha: form.fecha, tipo: form.tipo, monto: Number(form.monto),
       descripcion: form.descripcion.trim(), persona: form.persona.trim(),
@@ -1654,22 +1636,8 @@ function Ledger({ user }) {
       metodoPago: form.metodoPago,
     };
     try {
-      if (editingId) {
-        await db.collection("entries").doc(editingId).update(payload);
-        closeForm();
-      } else {
-        await db.collection("entries").add({
-          ...payload,
-          creadoPor: user.email,
-          creado: firebase.firestore.FieldValue.serverTimestamp(),
-        });
-        // Deja la fecha, el tipo, la categoría y el método de pago igual para poder
-        // seguir agregando movimientos rápido (por ejemplo varios diezmos del mismo domingo).
-        setForm((f) => ({ ...f, monto: "", descripcion: "", persona: "" }));
-        setSavedFlash(true);
-        setTimeout(() => setSavedFlash(false), 1300);
-        if (montoRef.current) montoRef.current.focus();
-      }
+      await db.collection("entries").doc(editingId).update(payload);
+      closeForm();
     } catch (err) {
       setError("No se pudo guardar el movimiento. Intenta de nuevo.");
     }
@@ -1683,13 +1651,14 @@ function Ledger({ user }) {
     }
   }
 
-  const months = useMemo(() => {
-    const set = new Set(entries.map((e) => monthKey(e.fecha)));
-    set.add(monthKey(todayStr()));
-    return Array.from(set).sort().reverse();
-  }, [entries]);
+  const viewKey = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, [monthOffset]);
 
-  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === selectedMonth).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [entries, selectedMonth]);
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === viewKey).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)), [entries, viewKey]);
 
   const totals = useMemo(() => {
     let diezmos = 0, ofrendas = 0, salidas = 0;
@@ -1707,16 +1676,32 @@ function Ledger({ user }) {
     setFiltroTipo((f) => (f === tipo ? null : tipo));
   }
 
+  if (informe) {
+    return (
+      <div>
+        <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
+          <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
+        </button>
+        {informe === "mes" ? <EstadoResultados /> : <InformeTrimestral />}
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 26, fontWeight: 600, color: "var(--ink)" }}>Diezmos, ofrendas y salidas</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 700 }}>Iglesia · Tesorería</div>
+      </div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 26, fontWeight: 600, color: "var(--ink)" }}>Resumen del mes</h1>
 
-      <div className="rd-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16 }}>
-        {months.map((m) => (
-          <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
-            {monthLabel(m)}
-          </button>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <button className="rd-btn" onClick={() => setMonthOffset((o) => o - 1)} aria-label="Mes anterior" style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid var(--paper-line)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon name="chevron" size={17} style={{ transform: "rotate(90deg)" }} />
+        </button>
+        <div className="rd-display" style={{ fontSize: 19, fontWeight: 600 }}>{monthLabel(viewKey)}</div>
+        <button className="rd-btn" onClick={() => setMonthOffset((o) => Math.min(0, o + 1))} disabled={monthOffset >= 0} aria-label="Mes siguiente" style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid var(--paper-line)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", opacity: monthOffset >= 0 ? 0.35 : 1 }}>
+          <Icon name="chevron" size={17} style={{ transform: "rotate(-90deg)" }} />
+        </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
@@ -1726,6 +1711,15 @@ function Ledger({ user }) {
         <button className="rd-btn rd-anim rd-card-dark" type="button" onClick={() => setFiltroTipo(null)} style={{ background: "var(--ink)", borderRadius: 16, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "space-between", textAlign: "left", width: "100%", boxSizing: "border-box" }}>
           <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Balance</div>
           <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 22, fontWeight: 600 }}>{currency(totals.balance)}</div>
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <button className="rd-btn rd-anim" onClick={() => setInforme("mes")} style={{ flex: 1, padding: "13px 0", borderRadius: 12, background: "var(--wood)", color: "#fff", border: "none", fontSize: 14.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Icon name="printer" size={16} color="#fff" /> Informe del mes
+        </button>
+        <button className="rd-btn rd-anim" onClick={() => setInforme("trimestre")} style={{ flex: 1, padding: "13px 0", borderRadius: 12, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 14.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Icon name="receipt" size={16} color="var(--ink)" /> Trimestral
         </button>
       </div>
 
@@ -1754,7 +1748,7 @@ function Ledger({ user }) {
         <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 14, padding: "32px 16px", textAlign: "center", color: "var(--muted)" }}>
           <Icon name="receipt" size={22} color="var(--muted)" style={{ marginBottom: 8, opacity: 0.6 }} />
           <div style={{ fontSize: 14 }}>Sin movimientos {filtroTipo ? `de ${TIPOS[filtroTipo].label.toLowerCase()}s` : ""} este mes.</div>
-          <div style={{ fontSize: 13 }}>Toca el botón + para registrar el primero.</div>
+          <div style={{ fontSize: 13 }}>Ve a la pestaña "Registro" para agregar uno.</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1787,25 +1781,15 @@ function Ledger({ user }) {
         </div>
       )}
 
-      <button className="rd-btn rd-anim" onClick={openNewForm} aria-label="Agregar movimiento" style={{ position: "fixed", bottom: 88, right: 24, width: 56, height: 56, borderRadius: "50%", background: "var(--ink)", color: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px rgba(43,36,32,0.3)", zIndex: 41 }}>
-        <Icon name="plus" size={24} />
-      </button>
-
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(43,36,32,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={closeForm}>
           <form onSubmit={handleSave} onClick={(e) => e.stopPropagation()} style={{ background: "var(--paper)", borderRadius: "20px 20px 0 0", padding: "20px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <div className="rd-display" style={{ fontSize: 20, fontWeight: 600 }}>{editingId ? "Editar movimiento" : "Nuevo movimiento"}</div>
+              <div className="rd-display" style={{ fontSize: 20, fontWeight: 600 }}>Editar movimiento</div>
               <button className="rd-btn" type="button" onClick={closeForm} style={{ color: "var(--muted)" }}>
                 <Icon name="x" size={20} />
               </button>
             </div>
-
-            {savedFlash && (
-              <div style={{ background: "#EAF2EC", color: "var(--sage)", padding: "9px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon name="trendUp" size={15} color="var(--sage)" /> Guardado — puedes agregar el siguiente
-              </div>
-            )}
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               {Object.entries(TIPOS).map(([key, meta]) => (
@@ -1820,7 +1804,7 @@ function Ledger({ user }) {
             </Field>
 
             <Field label="Monto (₡)">
-              <input ref={montoRef} className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
+              <input className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
             </Field>
 
             {form.tipo === "salida" && (
@@ -1864,18 +1848,156 @@ function Ledger({ user }) {
             </Field>
 
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              {editingId && (
-                <button className="rd-btn" type="button" onClick={() => { handleDelete(editingId); closeForm(); }} style={{ padding: "13px 18px", borderRadius: 10, background: "#FBEAE5", color: "var(--clay)", fontSize: 15, fontWeight: 600 }}>
-                  <Icon name="trash" size={16} color="var(--clay)" />
-                </button>
-              )}
+              <button className="rd-btn" type="button" onClick={() => { handleDelete(editingId); closeForm(); }} style={{ padding: "13px 18px", borderRadius: 10, background: "#FBEAE5", color: "var(--clay)", fontSize: 15, fontWeight: 600 }}>
+                <Icon name="trash" size={16} color="var(--clay)" />
+              </button>
               <button className="rd-btn" type="submit" style={{ flex: 1, padding: "13px 0", borderRadius: 10, background: "var(--ink)", color: "var(--paper)", fontSize: 16, fontWeight: 600 }}>
-                {editingId ? "Guardar cambios" : "Guardar movimiento"}
+                Guardar cambios
               </button>
             </div>
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============ REGISTRO (pantalla dedicada solo a registrar) ============
+function RegistroPage({ user }) {
+  const [members, setMembers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [error, setError] = useState(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const montoRef = useRef(null);
+
+  const [form, setForm] = useState({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
+
+  useEffect(() => {
+    const unsub = db.collection("members").orderBy("nombre").onSnapshot((snap) => setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("categories").orderBy("nombre").onSnapshot((snap) => setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  async function handleCreateMember(nombre) {
+    const trimmed = nombre.trim();
+    if (!trimmed) return;
+    const yaExiste = members.some((m) => m.nombre.trim().toLowerCase() === trimmed.toLowerCase());
+    if (yaExiste) return;
+    try { await db.collection("members").add({ nombre: trimmed }); } catch (err) {}
+  }
+
+  async function handleCreateCategory(nombre) {
+    const trimmed = nombre.trim();
+    if (!trimmed) return;
+    const yaExiste = categories.some((c) => c.nombre.trim().toLowerCase() === trimmed.toLowerCase());
+    if (yaExiste) return;
+    try { await db.collection("categories").add({ nombre: trimmed, grupo: GRUPO_SIN_ASIGNAR }); } catch (err) {}
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!form.fecha || !form.monto || Number(form.monto) <= 0) return;
+    const payload = {
+      fecha: form.fecha, tipo: form.tipo, monto: Number(form.monto),
+      descripcion: form.descripcion.trim(), persona: form.persona.trim(),
+      categoria: form.tipo === "salida" ? form.categoria : "",
+      metodoPago: form.metodoPago,
+    };
+    try {
+      await db.collection("entries").add({
+        ...payload,
+        creadoPor: user.email,
+        creado: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      // Deja la fecha, el tipo, la categoría y el método de pago igual para poder
+      // seguir agregando movimientos rápido (por ejemplo varios diezmos del mismo domingo).
+      setForm((f) => ({ ...f, monto: "", descripcion: "", persona: "" }));
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1300);
+      if (montoRef.current) montoRef.current.focus();
+      setError(null);
+    } catch (err) {
+      setError("No se pudo guardar el movimiento. Intenta de nuevo.");
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 600, color: "var(--ink)" }}>Registrar movimiento</h1>
+      <div style={{ fontSize: 14.5, color: "var(--muted)", marginBottom: 20 }}>Agrega un diezmo, ofrenda o salida.</div>
+
+      {savedFlash && (
+        <div style={{ background: "#EAF2EC", color: "var(--sage)", padding: "9px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon name="trendUp" size={15} color="var(--sage)" /> Guardado — puedes agregar el siguiente
+        </div>
+      )}
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+      <form onSubmit={handleSave} className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 16, padding: 16 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {Object.entries(TIPOS).map(([key, meta]) => (
+            <button key={key} type="button" className="rd-btn" onClick={() => setForm((f) => ({ ...f, tipo: key, categoria: "" }))} style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 14.5, fontWeight: 600, background: form.tipo === key ? meta.color : "#fff", color: form.tipo === key ? "#fff" : "var(--ink)", border: `1px solid ${form.tipo === key ? meta.color : "var(--paper-line)"}` }}>
+              {meta.label}
+            </button>
+          ))}
+        </div>
+
+        <Field label="Fecha">
+          <CalendarPicker value={form.fecha} maxDate={todayStr()} onChange={(v) => setForm((f) => ({ ...f, fecha: v }))} />
+        </Field>
+
+        <Field label="Monto (₡)">
+          <input ref={montoRef} className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))} required style={inputStyle} />
+        </Field>
+
+        {form.tipo === "salida" && (
+          <Field label="Categoría">
+            <SearchCreatePicker
+              value={form.categoria}
+              options={categories}
+              onChange={(v) => setForm((f) => ({ ...f, categoria: v }))}
+              onCreate={handleCreateCategory}
+              placeholder="Escribe para buscar o agregar…"
+              emptyText="Aún no hay categorías cargadas."
+              createLabel="Agregar categoría"
+            />
+          </Field>
+        )}
+
+        <Field label="Método de pago">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {METODOS_PAGO.map((mp) => (
+              <button key={mp.key} type="button" className="rd-btn" onClick={() => setForm((f) => ({ ...f, metodoPago: mp.key }))} style={{ flex: "1 0 auto", padding: "9px 14px", borderRadius: 999, fontSize: 14, fontWeight: 600, background: form.metodoPago === mp.key ? "var(--ink)" : "#fff", color: form.metodoPago === mp.key ? "var(--paper)" : "var(--muted)", border: `1px solid ${form.metodoPago === mp.key ? "var(--ink)" : "var(--paper-line)"}` }}>
+                {mp.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label={form.tipo === "salida" ? "¿A quién se le pagó / persona responsable? (opcional)" : "¿De quién es? (opcional)"}>
+          <SearchCreatePicker
+            value={form.persona}
+            options={members}
+            onChange={(v) => setForm((f) => ({ ...f, persona: v }))}
+            onCreate={handleCreateMember}
+            placeholder="Escribe para buscar o agregar…"
+            emptyText="Aún no hay miembros ni familias cargados."
+            createLabel="Agregar miembro"
+          />
+        </Field>
+
+        <Field label="Descripción (opcional)">
+          <input className="rd-input" type="text" placeholder="Notas adicionales" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} style={inputStyle} />
+        </Field>
+
+        <button className="rd-btn" type="submit" style={{ width: "100%", marginTop: 8, padding: "14px 0", borderRadius: 10, background: "var(--ink)", color: "var(--paper)", fontSize: 16, fontWeight: 600 }}>
+          Guardar movimiento
+        </button>
+      </form>
     </div>
   );
 }
@@ -1891,7 +2013,7 @@ function NavButton({ active, onClick, iconName, label }) {
 }
 
 function Shell({ user, rol }) {
-  const [tab, setTab] = useState("ledger");
+  const [tab, setTab] = useState("inicio");
   return (
     <div className="app-shell" style={{ ...theme, fontFamily: "'Public Sans', system-ui, sans-serif", background: "var(--paper)", color: "var(--ink)", minHeight: "100vh", width: "100%", boxSizing: "border-box", padding: "20px 16px 88px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
@@ -1907,12 +2029,14 @@ function Shell({ user, rol }) {
         </button>
       </div>
 
-      {tab === "ledger" && <Ledger user={user} />}
+      {tab === "inicio" && <Inicio user={user} />}
+      {tab === "registro" && <RegistroPage user={user} />}
       {tab === "report" && <Report />}
       {tab === "settings" && <Settings rol={rol} currentEmail={user.email.trim().toLowerCase()} />}
 
       <div className="no-print" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid var(--paper-line)", display: "flex", padding: "8px 12px calc(8px + env(safe-area-inset-bottom))", gap: 4, zIndex: 40 }}>
-        <NavButton active={tab === "ledger"} onClick={() => setTab("ledger")} iconName="book" label="Registro" />
+        <NavButton active={tab === "inicio"} onClick={() => setTab("inicio")} iconName="home" label="Inicio" />
+        <NavButton active={tab === "registro"} onClick={() => setTab("registro")} iconName="book" label="Registro" />
         <NavButton active={tab === "report"} onClick={() => setTab("report")} iconName="bars" label="Informe" />
         <NavButton active={tab === "settings"} onClick={() => setTab("settings")} iconName="sliders" label="Ajustes" />
       </div>
