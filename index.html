@@ -1863,11 +1863,167 @@ function Inicio({ user, onIrRegistro }) {
 }
 
 // ============ REGISTRO (pantalla dedicada solo a registrar) ============
+// ============ TABLA RAPIDA (varias filas seguidas, tipo hoja de cálculo) ============
+function TablaRapida({ user, members, categories, handleCreateMember, handleCreateCategory }) {
+  const [fecha, setFecha] = useState(todayStr());
+  const [tipo, setTipo] = useState("diezmo");
+  const [metodoPago, setMetodoPago] = useState("efectivo");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [persona, setPersona] = useState("");
+  const [monto, setMonto] = useState("");
+  const [categoria, setCategoria] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    const unsub = db.collection("entries")
+      .where("fecha", "==", fecha)
+      .where("tipo", "==", tipo)
+      .onSnapshot(
+        (snap) => {
+          const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          rows.sort((a, b) => ((a.creado && a.creado.seconds) || 0) - ((b.creado && b.creado.seconds) || 0));
+          setFilas(rows);
+          setLoading(false);
+        },
+        () => { setError("No se pudo cargar la lista de ese día."); setLoading(false); }
+      );
+    return () => unsub();
+  }, [fecha, tipo]);
+
+  const total = useMemo(() => filas.reduce((s, f) => s + (f.monto || 0), 0), [filas]);
+  const cols = tipo === "salida" ? "28px 1fr 1fr 110px 32px" : "28px 1fr 110px 32px";
+
+  async function agregarFila(e) {
+    e.preventDefault();
+    const m = Number(monto);
+    if (!m || m <= 0) return;
+    try {
+      await db.collection("entries").add({
+        fecha, tipo, monto: m, descripcion: "", persona: persona.trim(),
+        categoria: tipo === "salida" ? categoria : "",
+        metodoPago,
+        creadoPor: user.email,
+        creado: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      setPersona("");
+      setMonto("");
+      setCategoria("");
+      setError(null);
+    } catch (err) {
+      setError("No se pudo guardar la fila. Intenta de nuevo.");
+    }
+  }
+
+  async function eliminarFila(id) {
+    try { await db.collection("entries").doc(id).delete(); } catch (err) { setError("No se pudo eliminar la fila."); }
+  }
+
+  return (
+    <div>
+      <div className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 16, padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {Object.entries(TIPOS).map(([key, meta]) => (
+            <button key={key} type="button" className="rd-btn" onClick={() => setTipo(key)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 13.5, fontWeight: 600, background: tipo === key ? meta.color : "#fff", color: tipo === key ? "#fff" : "var(--ink)", border: `1px solid ${tipo === key ? meta.color : "var(--paper-line)"}` }}>
+              {meta.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 180px" }}>
+            <Field label="Fecha (aplica a todas las filas)">
+              <CalendarPicker value={fecha} maxDate={todayStr()} onChange={setFecha} />
+            </Field>
+          </div>
+          <div style={{ flex: "1 1 180px" }}>
+            <Field label="Método de pago">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {METODOS_PAGO.map((mp) => (
+                  <button key={mp.key} type="button" className="rd-btn" onClick={() => setMetodoPago(mp.key)} style={{ padding: "7px 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, background: metodoPago === mp.key ? "var(--ink)" : "#fff", color: metodoPago === mp.key ? "var(--paper)" : "var(--muted)", border: `1px solid ${metodoPago === mp.key ? "var(--ink)" : "var(--paper-line)"}` }}>
+                    {mp.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      <div className="rd-card" style={{ background: "#fff", border: "1px solid var(--paper-line)", borderRadius: 16, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "8px 12px", background: "#FAF6F0", borderBottom: "1px solid var(--paper-line)", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div>#</div>
+          <div>{tipo === "salida" ? "A quién / para qué" : "Persona"}</div>
+          {tipo === "salida" && <div>Categoría</div>}
+          <div style={{ textAlign: "right" }}>Monto</div>
+          <div></div>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 14 }}>Cargando…</div>
+        ) : (
+          filas.map((f, i) => (
+            <div key={f.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--paper-line)", alignItems: "center", fontSize: 14.5 }}>
+              <div className="rd-mono" style={{ color: "var(--muted)", fontSize: 13 }}>{i + 1}</div>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.persona || "—"}</div>
+              {tipo === "salida" && <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>{f.categoria || "—"}</div>}
+              <div className="rd-mono" style={{ textAlign: "right", fontWeight: 600 }}>{currency(f.monto)}</div>
+              <button type="button" className="rd-btn" onClick={() => eliminarFila(f.id)} aria-label="Eliminar fila" style={{ color: "var(--muted)", display: "flex", justifyContent: "center" }}>
+                <Icon name="trash" size={14} />
+              </button>
+            </div>
+          ))
+        )}
+
+        <form onSubmit={agregarFila} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "9px 12px", alignItems: "center", background: "#FBF8F3" }}>
+          <div className="rd-mono" style={{ color: "var(--muted)", fontSize: 13 }}>{filas.length + 1}</div>
+          <div>
+            <SearchCreatePicker
+              value={persona}
+              options={members}
+              onChange={setPersona}
+              onCreate={handleCreateMember}
+              placeholder="Nombre…"
+              emptyText="Aún no hay miembros ni familias cargados."
+              createLabel="Agregar miembro"
+            />
+          </div>
+          {tipo === "salida" && (
+            <div>
+              <SearchCreatePicker
+                value={categoria}
+                options={categories}
+                onChange={setCategoria}
+                onCreate={handleCreateCategory}
+                placeholder="Categoría…"
+                emptyText="Aún no hay categorías cargadas."
+                createLabel="Agregar categoría"
+              />
+            </div>
+          )}
+          <input className="rd-input rd-mono" type="number" inputMode="decimal" min="1" step="1" placeholder="0" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", textAlign: "right" }} />
+          <button type="submit" className="rd-btn" aria-label="Agregar fila" style={{ width: 28, height: 28, borderRadius: 8, background: "var(--ink)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="plus" size={14} color="#fff" />
+          </button>
+        </form>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 4px 0" }}>
+        <div style={{ fontSize: 14, color: "var(--muted)", fontWeight: 600 }}>{filas.length} {filas.length === 1 ? "fila" : "filas"}</div>
+        <div className="rd-mono" style={{ fontSize: 18, fontWeight: 700 }}>Total: {currency(total)}</div>
+      </div>
+    </div>
+  );
+}
+
 function RegistroPage({ user }) {
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [modo, setModo] = useState("uno");
   const montoRef = useRef(null);
 
   const [form, setForm] = useState({ fecha: "", tipo: "diezmo", monto: "", descripcion: "", persona: "", categoria: "", metodoPago: "efectivo" });
@@ -1928,8 +2084,17 @@ function RegistroPage({ user }) {
   return (
     <div>
       <h1 className="rd-display" style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 600, color: "var(--ink)" }}>Registrar movimiento</h1>
-      <div style={{ fontSize: 14.5, color: "var(--muted)", marginBottom: 20 }}>Agrega un diezmo, ofrenda o salida.</div>
+      <div style={{ fontSize: 14.5, color: "var(--muted)", marginBottom: 16 }}>Agrega un diezmo, ofrenda o salida.</div>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <TabButton active={modo === "uno"} onClick={() => setModo("uno")} iconName="receipt" label="Uno por uno" />
+        <TabButton active={modo === "tabla"} onClick={() => setModo("tabla")} iconName="bars" label="Varios rápido (tabla)" />
+      </div>
+
+      {modo === "tabla" ? (
+        <TablaRapida user={user} members={members} categories={categories} handleCreateMember={handleCreateMember} handleCreateCategory={handleCreateCategory} />
+      ) : (
+      <React.Fragment>
       {savedFlash && (
         <div style={{ background: "#EAF2EC", color: "var(--sage)", padding: "9px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="trendUp" size={15} color="var(--sage)" /> Guardado — puedes agregar el siguiente
@@ -1998,6 +2163,8 @@ function RegistroPage({ user }) {
           Guardar movimiento
         </button>
       </form>
+      </React.Fragment>
+      )}
     </div>
   );
 }
