@@ -2308,16 +2308,16 @@ function PastorView({ user }) {
               <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 30, fontWeight: 600 }}>{currency(totals.balance)}</div>
             </div>
 
-            <button className="rd-btn rd-anim" onClick={() => setInforme("mes")} style={{ marginTop: 10, width: "100%", padding: "17px 0", borderRadius: 16, background: "var(--wood)", color: "var(--paper)", border: "none", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <Icon name="printer" size={20} color="var(--paper)" /> Ver informe del mes (PDF)
+            <button className="rd-btn rd-anim" onClick={() => setInforme("diezmadores")} style={{ marginTop: 10, width: "100%", padding: "17px 0", borderRadius: 16, background: "var(--wood)", color: "var(--paper)", border: "none", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="users" size={20} color="var(--paper)" /> Ver diezmadores del mes
+            </button>
+
+            <button className="rd-btn rd-anim" onClick={() => setInforme("mes")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="printer" size={20} color="var(--ink)" /> Ver informe del mes (PDF)
             </button>
 
             <button className="rd-btn rd-anim" onClick={() => setInforme("trimestre")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               <Icon name="receipt" size={20} color="var(--ink)" /> Ver informe trimestral
-            </button>
-
-            <button className="rd-btn rd-anim" onClick={() => setInforme("diezmadores")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <Icon name="users" size={20} color="var(--ink)" /> Ver diezmadores del mes
             </button>
           </React.Fragment>
         )}
