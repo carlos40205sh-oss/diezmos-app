@@ -1682,7 +1682,7 @@ function Inicio({ user, onIrRegistro }) {
         <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
           <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
         </button>
-        {informe === "mes" ? <EstadoResultados /> : <InformeTrimestral />}
+        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : <InformeTrimestral />}
       </div>
     );
   }
@@ -2251,7 +2251,7 @@ function PastorView({ user }) {
         <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
           <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
         </button>
-        {informe === "mes" ? <EstadoResultados /> : <InformeTrimestral />}
+        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : <InformeTrimestral />}
       </div>
     );
   }
@@ -2314,6 +2314,10 @@ function PastorView({ user }) {
 
             <button className="rd-btn rd-anim" onClick={() => setInforme("trimestre")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               <Icon name="receipt" size={20} color="var(--ink)" /> Ver informe trimestral
+            </button>
+
+            <button className="rd-btn rd-anim" onClick={() => setInforme("diezmadores")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="users" size={20} color="var(--ink)" /> Ver diezmadores del mes
             </button>
           </React.Fragment>
         )}
