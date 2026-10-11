@@ -956,8 +956,9 @@ function Report() {
         <TabButton active={view === "miembro"} onClick={() => setView("miembro")} iconName="users" label="Diezmadores" />
         <TabButton active={view === "resultados"} onClick={() => setView("resultados")} iconName="landmark" label="Resultados" />
         <TabButton active={view === "trimestre"} onClick={() => setView("trimestre")} iconName="receipt" label="Trimestral" />
+        <TabButton active={view === "gastos"} onClick={() => setView("gastos")} iconName="trendDown" label="Gastos" />
       </div>
-      {view === "dia" ? <DailyReport /> : view === "miembro" ? <MemberMonthReport /> : view === "resultados" ? <EstadoResultados /> : <InformeTrimestral />}
+      {view === "dia" ? <DailyReport /> : view === "miembro" ? <MemberMonthReport /> : view === "resultados" ? <EstadoResultados /> : view === "gastos" ? <InformeGastos /> : <InformeTrimestral />}
     </div>
   );
 }
@@ -1376,6 +1377,134 @@ function EstadoResultados() {
   );
 }
 
+// ============ INFORME DE GASTOS ============
+function InformeGastos() {
+  const [selectedMonth, setSelectedMonth] = useState(monthKey(todayStr()));
+  const [entries, setEntries] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [openSet, setOpenSet] = useState(() => new Set());
+  const [printExpand, setPrintExpand] = useState(false);
+
+  useEffect(() => {
+    const unsub = db.collection("entries").where("tipo", "==", "salida").onSnapshot(
+      (snap) => { setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLoading(false); setError(null); },
+      () => { setError("No se pudo cargar el informe."); setLoading(false); }
+    );
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("categories").onSnapshot((snap) => setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    function onAfterPrint() { setPrintExpand(false); }
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => window.removeEventListener("afterprint", onAfterPrint);
+  }, []);
+
+  const categoriaAGrupo = useMemo(() => {
+    const map = {};
+    categories.forEach((c) => { map[c.nombre.trim().toLowerCase()] = (c.grupo && c.grupo.trim()) || GRUPO_SIN_ASIGNAR; });
+    return map;
+  }, [categories]);
+
+  const months = useMemo(() => {
+    const set = new Set(entries.map((e) => monthKey(e.fecha)));
+    set.add(monthKey(todayStr()));
+    return Array.from(set).sort().reverse();
+  }, [entries]);
+
+  const monthEntries = useMemo(() => entries.filter((e) => monthKey(e.fecha) === selectedMonth), [entries, selectedMonth]);
+  const total = useMemo(() => monthEntries.reduce((s, e) => s + e.monto, 0), [monthEntries]);
+
+  const porGrupo = useMemo(() => {
+    const grupos = {};
+    for (const e of monthEntries) {
+      const categoria = e.categoria && e.categoria.trim() ? e.categoria.trim() : "Sin categoría";
+      const grupo = categoriaAGrupo[categoria.toLowerCase()] || GRUPO_SIN_ASIGNAR;
+      if (!grupos[grupo]) grupos[grupo] = { total: 0, categorias: {} };
+      grupos[grupo].total += e.monto;
+      if (!grupos[grupo].categorias[categoria]) grupos[grupo].categorias[categoria] = { total: 0, items: [] };
+      grupos[grupo].categorias[categoria].total += e.monto;
+      grupos[grupo].categorias[categoria].items.push(e);
+    }
+    return Object.entries(grupos)
+      .map(([grupo, datos]) => ({
+        grupo, total: datos.total,
+        categorias: Object.entries(datos.categorias)
+          .map(([categoria, cd]) => ({ categoria, ...cd, items: cd.items.sort((a, b) => (a.fecha < b.fecha ? 1 : -1)) }))
+          .sort((a, b) => b.total - a.total),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [monthEntries, categoriaAGrupo]);
+
+  function toggle(key) {
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+  function isOpen(key) { return printExpand || openSet.has(key); }
+  function handlePrint() {
+    setPrintExpand(true);
+    setTimeout(() => window.print(), 150);
+  }
+
+  return (
+    <div>
+      <h1 className="rd-display" style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 600 }}>Gastos — {monthLabel(selectedMonth)}</h1>
+
+      <PrintButton onClick={handlePrint} />
+
+      <div className="rd-scroll no-print" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 20 }}>
+        {months.map((m) => (
+          <button key={m} className="rd-btn rd-anim" onClick={() => setSelectedMonth(m)} style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 999, fontSize: 14.5, fontWeight: 600, background: m === selectedMonth ? "var(--ink)" : "transparent", color: m === selectedMonth ? "var(--paper)" : "var(--muted)", border: `1px solid ${m === selectedMonth ? "var(--ink)" : "var(--paper-line)"}` }}>
+            {monthLabel(m)}
+          </button>
+        ))}
+      </div>
+
+      {error && <div style={{ background: "#FBEAE5", color: "var(--clay)", padding: "10px 14px", borderRadius: 10, fontSize: 14.5, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ color: "var(--muted)", fontSize: 15.5, textAlign: "center", padding: "24px 0" }}>Cargando…</div>
+      ) : (
+        <>
+          <div className="rd-card-dark" style={{ background: "var(--ink)", borderRadius: 14, padding: "16px", marginBottom: 20 }}>
+            <div style={{ color: "rgba(250,246,240,0.65)", fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>Total de gastos del mes</div>
+            <div className="rd-mono" style={{ color: "var(--paper)", fontSize: 26, fontWeight: 600 }}>{currency(total)}</div>
+          </div>
+
+          {porGrupo.length === 0 ? (
+            <div style={{ border: "1px dashed var(--paper-line)", borderRadius: 12, padding: "20px 16px", textAlign: "center", color: "var(--muted)", fontSize: 14.5 }}>Sin gastos registrados este mes.</div>
+          ) : porGrupo.map((g) => (
+            <div key={g.grupo} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px 8px" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{g.grupo}</span>
+                <span className="rd-mono" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--clay)" }}>{currency(g.total)}</span>
+              </div>
+              <div style={{ paddingLeft: 10, borderLeft: "2px solid var(--paper-line)" }}>
+                {g.categorias.map((cat) => (
+                  <AccountRow key={cat.categoria} title={cat.categoria} iconName="tags" color="var(--clay)" total={cat.total} count={cat.items.length} isOpen={isOpen("cat-" + g.grupo + "-" + cat.categoria)} onToggle={() => toggle("cat-" + g.grupo + "-" + cat.categoria)}>
+                    {cat.items.map((e) => (
+                      <DetailLine key={e.id} left={e.descripcion || e.persona || "Sin descripción"} sub={dateLabel(e.fecha) + (e.persona && e.descripcion ? " · " + e.persona : "")} right={currency(e.monto)} />
+                    ))}
+                  </AccountRow>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ============ INFORME TRIMESTRAL ============
 function InformeTrimestral() {
   const today = new Date();
@@ -1682,7 +1811,7 @@ function Inicio({ user, onIrRegistro }) {
         <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
           <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
         </button>
-        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : <InformeTrimestral />}
+        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : informe === "gastos" ? <InformeGastos /> : <InformeTrimestral />}
       </div>
     );
   }
@@ -2251,7 +2380,7 @@ function PastorView({ user }) {
         <button className="rd-btn no-print" onClick={() => setInforme(null)} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontWeight: 600, fontSize: 14.5, marginBottom: 16 }}>
           <Icon name="chevron" size={16} style={{ transform: "rotate(90deg)" }} /> Volver
         </button>
-        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : <InformeTrimestral />}
+        {informe === "mes" ? <EstadoResultados /> : informe === "diezmadores" ? <MemberMonthReport /> : informe === "gastos" ? <InformeGastos /> : <InformeTrimestral />}
       </div>
     );
   }
@@ -2310,6 +2439,10 @@ function PastorView({ user }) {
 
             <button className="rd-btn rd-anim" onClick={() => setInforme("diezmadores")} style={{ marginTop: 10, width: "100%", padding: "17px 0", borderRadius: 16, background: "var(--wood)", color: "var(--paper)", border: "none", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               <Icon name="users" size={20} color="var(--paper)" /> Ver diezmadores del mes
+            </button>
+
+            <button className="rd-btn rd-anim" onClick={() => setInforme("gastos")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Icon name="trendDown" size={20} color="var(--ink)" /> Ver gastos del mes
             </button>
 
             <button className="rd-btn rd-anim" onClick={() => setInforme("mes")} style={{ width: "100%", padding: "17px 0", borderRadius: 16, background: "#fff", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
